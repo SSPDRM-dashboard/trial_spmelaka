@@ -288,6 +288,9 @@
 <script>
 // ========== CONFIG ==========
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx4bVufZQt7TuPm8qzEMknqQkeNoDEJiMevGewmrxlKcY6eaZAIFmXMCgOtopek-8_r/exec';
+  
+// Pre-warm the script (runs once when page loads)
+fetch(APPS_SCRIPT_URL + '?action=warmup&t=' + Date.now()).catch(() => {});
 
 // District mapping (unchanged)
 const TAB_LABELS = { today:'📅 Hari Ini (Semua)', d1:'🔴 Melaka Tengah', d2:'🟢 Jasin', d3:'🟡 Alor Gajah', d4:'🟣 IPK SSPDRM' };
