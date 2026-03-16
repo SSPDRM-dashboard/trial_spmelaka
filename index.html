@@ -7,7 +7,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
 <style>
-  /* === your original CSS (unchanged) === */
   :root{--navy:#003087;--navy-dark:#001f5c;--navy-mid:#0a3fa8;--gold:#FFD700;--gold-dark:#c9a800;--dark:#0f172a;--muted:#64748b;--card:#fff;--bg:#f1f5f9;--border:#e2e8f0;--red:#dc2626;--green:#16a34a;--amber:#d97706;}
   *{margin:0;padding:0;box-sizing:border-box;}
   body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--dark);min-height:100vh;}
@@ -20,8 +19,9 @@
   .login-field label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;}
   .login-field input{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:14px;font-family:'Inter',sans-serif;outline:none;color:var(--dark);transition:border-color .2s;}
   .login-field input:focus{border-color:var(--navy);}
-  .btn-login{width:100%;background:linear-gradient(135deg,var(--navy-dark),var(--navy-mid));color:white;border:none;border-radius:10px;padding:13px;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;cursor:pointer;margin-top:8px;letter-spacing:.04em;transition:opacity .2s;}
+  .btn-login{width:100%;background:linear-gradient(135deg,var(--navy-dark),var(--navy-mid));color:white;border:none;border-radius:10px;padding:13px;font-size:14px;font-family:'Inter',sans-serif;font-weight:700;cursor:pointer;margin-top:8px;letter-spacing:.04em;transition:opacity .2s;display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-login:hover{opacity:.9;}
+  .btn-login:disabled{opacity:0.7;cursor:not-allowed;}
   .login-error{background:#FFF0F0;border:1px solid #FFCDD2;color:#C0392B;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;display:none;}
   .login-footer{font-size:11px;color:var(--muted);margin-top:20px;}
   .login-divider{border:none;border-top:1px solid var(--border);margin:20px 0;}
@@ -123,7 +123,6 @@
   .pngs-table tr.pngs-grand td{background:#d0d0d0;font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;color:#222;padding:10px 18px;}
   .pngs-table tr.pngs-grand td.td-num-g{text-align:center;font-family:'Rajdhani',sans-serif;font-size:17px;}
 
-  /* New style for district headers in the table */
   .district-header {
     background-color: var(--navy-mid);
     color: white;
@@ -139,6 +138,77 @@
     padding: 8px 14px;
     text-align: left;
   }
+
+  .unlock-container {
+    background: linear-gradient(135deg, var(--navy-dark), var(--navy-mid));
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+    text-align: center;
+    color: white;
+  }
+  .unlock-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 15px;
+  }
+  .unlock-input-group {
+    display: flex;
+    max-width: 400px;
+    margin: 0 auto;
+    gap: 10px;
+  }
+  .unlock-input {
+    flex: 1;
+    padding: 12px 15px;
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+  }
+  .unlock-input:focus {
+    border-color: white;
+  }
+  .unlock-btn {
+    background: var(--gold);
+    color: var(--navy-dark);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 25px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .unlock-btn:hover {
+    background: white;
+    transform: translateY(-2px);
+  }
+  .unlock-error {
+    color: #ff9999;
+    font-size: 13px;
+    margin-top: 10px;
+    display: none;
+  }
+  .protected-content {
+    display: none;
+  }
+  .protected-content.visible {
+    display: block;
+  }
+
+  @keyframes spin { 
+    100% { transform: rotate(360deg); } 
+  }
+  .spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
 </style>
 </head>
 <body>
@@ -150,7 +220,7 @@
     <div class="login-sub">Sistem Penugasan Anggota SSPDRM</div>
     <div class="login-field"><label>Nama Pengguna</label><input type="text" id="loginUser" placeholder="Masukkan nama pengguna..."/></div>
     <div class="login-field"><label>Token (Kata Laluan)</label><input type="password" id="loginToken" placeholder="Masukkan token anda..."/></div>
-    <button class="btn-login" onclick="doLogin()">LOG MASUK</button>
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">LOG MASUK</button>
     <div class="login-error" id="loginError">❌ Nama pengguna atau token tidak sah.</div>
     <hr class="login-divider">
     <div class="login-footer">Polis Diraja Malaysia · SSPDRM Melaka<br>Gunakan token yang diberikan oleh pentadbir.</div>
@@ -193,7 +263,7 @@
   <div class="alert alert-error" id="alertError"></div>
   <div class="alert alert-info"  id="alertInfo"></div>
 
-  <!-- All tab contents -->
+  <!-- SEMUA DAERAH TAB - UNLOCKED -->
   <div class="tab-content active" id="tab-today">
     <div class="date-banner navy"><div class="date-banner-left"><div class="date-icon">📅</div><div><div class="date-banner-title" id="today_title">—</div><div class="date-banner-sub">Semua daerah · Tarikh penugasan dipilih</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="today_count">—</div><div class="date-banner-label">Jumlah anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -207,8 +277,12 @@
       <div class="card"><div class="card-header"><div class="card-title">Anggota Mengikut Daerah</div><div class="card-badge" id="today_b1">—</div></div><canvas id="today_c1"></canvas></div>
       <div id="today_pngs_card" class="card" style="padding:0;overflow:hidden;"></div>
     </div>
+    
     <div class="table-wrap">
-      <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota Bertugas Hari Ini</div><div class="card-badge" id="today_tb">—</div></div>
+      <div class="card-header" style="padding:16px 20px 0;">
+        <div class="card-title">Senarai Anggota Bertugas Hari Ini</div>
+        <div class="card-badge" id="today_tb">—</div>
+      </div>
       <div style="overflow-x:auto;margin-top:12px;">
         <table>
           <thead>
@@ -232,6 +306,7 @@
     </div>
   </div>
 
+  <!-- MELAKA TENGAH TAB - PASSWORD PROTECTED -->
   <div class="tab-content" id="tab-d1">
     <div class="date-banner red"><div class="date-banner-left"><div class="date-icon">🔴</div><div><div class="date-banner-title">Melaka Tengah</div><div class="date-banner-sub" id="d1_sub">—</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="d1_count">—</div><div class="date-banner-label">Anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -244,31 +319,44 @@
       <div class="card"><div class="card-header"><div class="card-title">Anggota Mengikut Balai</div></div><canvas id="d1_c1"></canvas></div>
       <div id="d1_pngs_card" class="card" style="padding:0;overflow:hidden;"></div>
     </div>
-    <div class="table-wrap">
-      <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Melaka Tengah</div><div class="card-badge" id="d1_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Pangkat</th>
-              <th>Nama & No. Badan</th>
-              <th>Balai Bertugas</th>
-              <th>Jenis Tugasan</th>
-              <th>Jam</th>
-              <th>Masa Mula</th>
-              <th>Jantina</th>
-              <th>Pejawatan</th>
-            </tr>
-          </thead>
-          <tbody id="d1_table">
-            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
-          </tbody>
-        </table>
+    
+    <div class="unlock-container" id="unlockSectionD1">
+      <div class="unlock-title">🔒 DATA SENSITIF - SENARAI ANGGOTA MELAKA TENGAH</div>
+      <div class="unlock-input-group">
+        <input type="password" class="unlock-input" id="anggotaPasswordD1" placeholder="Masukkan kata laluan untuk lihat data anggota..." onkeypress="if(event.key==='Enter') unlockAnggota('d1')">
+        <button class="unlock-btn" onclick="unlockAnggota('d1')">BUKA KUNCI</button>
+      </div>
+      <div class="unlock-error" id="unlockErrorD1">❌ Kata laluan salah</div>
+    </div>
+
+    <div class="protected-content" id="protectedAnggotaD1">
+      <div class="table-wrap">
+        <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Melaka Tengah</div><div class="card-badge" id="d1_tb">—</div></div>
+        <div style="overflow-x:auto;margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pangkat</th>
+                <th>Nama & No. Badan</th>
+                <th>Balai Bertugas</th>
+                <th>Jenis Tugasan</th>
+                <th>Jam</th>
+                <th>Masa Mula</th>
+                <th>Jantina</th>
+                <th>Pejawatan</th>
+              </tr>
+            </thead>
+            <tbody id="d1_table">
+              <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- JASIN TAB - PASSWORD PROTECTED -->
   <div class="tab-content" id="tab-d2">
     <div class="date-banner green"><div class="date-banner-left"><div class="date-icon">🟢</div><div><div class="date-banner-title">Jasin</div><div class="date-banner-sub" id="d2_sub">—</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="d2_count">—</div><div class="date-banner-label">Anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -281,31 +369,44 @@
       <div class="card"><div class="card-header"><div class="card-title">Anggota Mengikut Balai</div></div><canvas id="d2_c1"></canvas></div>
       <div id="d2_pngs_card" class="card" style="padding:0;overflow:hidden;"></div>
     </div>
-    <div class="table-wrap">
-      <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Jasin</div><div class="card-badge" id="d2_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Pangkat</th>
-              <th>Nama & No. Badan</th>
-              <th>Balai Bertugas</th>
-              <th>Jenis Tugasan</th>
-              <th>Jam</th>
-              <th>Masa Mula</th>
-              <th>Jantina</th>
-              <th>Pejawatan</th>
-            </tr>
-          </thead>
-          <tbody id="d2_table">
-            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
-          </tbody>
-        </table>
+    
+    <div class="unlock-container" id="unlockSectionD2">
+      <div class="unlock-title">🔒 DATA SENSITIF - SENARAI ANGGOTA JASIN</div>
+      <div class="unlock-input-group">
+        <input type="password" class="unlock-input" id="anggotaPasswordD2" placeholder="Masukkan kata laluan untuk lihat data anggota..." onkeypress="if(event.key==='Enter') unlockAnggota('d2')">
+        <button class="unlock-btn" onclick="unlockAnggota('d2')">BUKA KUNCI</button>
+      </div>
+      <div class="unlock-error" id="unlockErrorD2">❌ Kata laluan salah</div>
+    </div>
+
+    <div class="protected-content" id="protectedAnggotaD2">
+      <div class="table-wrap">
+        <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Jasin</div><div class="card-badge" id="d2_tb">—</div></div>
+        <div style="overflow-x:auto;margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pangkat</th>
+                <th>Nama & No. Badan</th>
+                <th>Balai Bertugas</th>
+                <th>Jenis Tugasan</th>
+                <th>Jam</th>
+                <th>Masa Mula</th>
+                <th>Jantina</th>
+                <th>Pejawatan</th>
+              </tr>
+            </thead>
+            <tbody id="d2_table">
+              <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- ALOR GAJAH TAB - PASSWORD PROTECTED -->
   <div class="tab-content" id="tab-d3">
     <div class="date-banner amber"><div class="date-banner-left"><div class="date-icon">🟡</div><div><div class="date-banner-title">Alor Gajah</div><div class="date-banner-sub" id="d3_sub">—</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="d3_count">—</div><div class="date-banner-label">Anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -318,31 +419,44 @@
       <div class="card"><div class="card-header"><div class="card-title">Anggota Mengikut Balai</div></div><canvas id="d3_c1"></canvas></div>
       <div id="d3_pngs_card" class="card" style="padding:0;overflow:hidden;"></div>
     </div>
-    <div class="table-wrap">
-      <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Alor Gajah</div><div class="card-badge" id="d3_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Pangkat</th>
-              <th>Nama & No. Badan</th>
-              <th>Balai Bertugas</th>
-              <th>Jenis Tugasan</th>
-              <th>Jam</th>
-              <th>Masa Mula</th>
-              <th>Jantina</th>
-              <th>Pejawatan</th>
-            </tr>
-          </thead>
-          <tbody id="d3_table">
-            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
-          </tbody>
-        </table>
+    
+    <div class="unlock-container" id="unlockSectionD3">
+      <div class="unlock-title">🔒 DATA SENSITIF - SENARAI ANGGOTA ALOR GAJAH</div>
+      <div class="unlock-input-group">
+        <input type="password" class="unlock-input" id="anggotaPasswordD3" placeholder="Masukkan kata laluan untuk lihat data anggota..." onkeypress="if(event.key==='Enter') unlockAnggota('d3')">
+        <button class="unlock-btn" onclick="unlockAnggota('d3')">BUKA KUNCI</button>
+      </div>
+      <div class="unlock-error" id="unlockErrorD3">❌ Kata laluan salah</div>
+    </div>
+
+    <div class="protected-content" id="protectedAnggotaD3">
+      <div class="table-wrap">
+        <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Alor Gajah</div><div class="card-badge" id="d3_tb">—</div></div>
+        <div style="overflow-x:auto;margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pangkat</th>
+                <th>Nama & No. Badan</th>
+                <th>Balai Bertugas</th>
+                <th>Jenis Tugasan</th>
+                <th>Jam</th>
+                <th>Masa Mula</th>
+                <th>Jantina</th>
+                <th>Pejawatan</th>
+              </tr>
+            </thead>
+            <tbody id="d3_table">
+              <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- IPK SSPDRM TAB - PASSWORD PROTECTED -->
   <div class="tab-content" id="tab-d4">
     <div class="date-banner purple"><div class="date-banner-left"><div class="date-icon">🟣</div><div><div class="date-banner-title">IPK SSPDRM</div><div class="date-banner-sub" id="d4_sub">—</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="d4_count">—</div><div class="date-banner-label">Anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -355,31 +469,44 @@
       <div class="card"><div class="card-header"><div class="card-title">Anggota Mengikut Balai</div></div><canvas id="d4_c1"></canvas></div>
       <div id="d4_pngs_card" class="card" style="padding:0;overflow:hidden;"></div>
     </div>
-    <div class="table-wrap">
-      <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — IPK SSPDRM</div><div class="card-badge" id="d4_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Pangkat</th>
-              <th>Nama & No. Badan</th>
-              <th>Balai Bertugas</th>
-              <th>Jenis Tugasan</th>
-              <th>Jam</th>
-              <th>Masa Mula</th>
-              <th>Jantina</th>
-              <th>Pejawatan</th>
-            </tr>
-          </thead>
-          <tbody id="d4_table">
-            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
-          </tbody>
-        </table>
+    
+    <div class="unlock-container" id="unlockSectionD4">
+      <div class="unlock-title">🔒 DATA SENSITIF - SENARAI ANGGOTA IPK SSPDRM</div>
+      <div class="unlock-input-group">
+        <input type="password" class="unlock-input" id="anggotaPasswordD4" placeholder="Masukkan kata laluan untuk lihat data anggota..." onkeypress="if(event.key==='Enter') unlockAnggota('d4')">
+        <button class="unlock-btn" onclick="unlockAnggota('d4')">BUKA KUNCI</button>
+      </div>
+      <div class="unlock-error" id="unlockErrorD4">❌ Kata laluan salah</div>
+    </div>
+
+    <div class="protected-content" id="protectedAnggotaD4">
+      <div class="table-wrap">
+        <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — IPK SSPDRM</div><div class="card-badge" id="d4_tb">—</div></div>
+        <div style="overflow-x:auto;margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Pangkat</th>
+                <th>Nama & No. Badan</th>
+                <th>Balai Bertugas</th>
+                <th>Jenis Tugasan</th>
+                <th>Jam</th>
+                <th>Masa Mula</th>
+                <th>Jantina</th>
+                <th>Pejawatan</th>
+              </tr>
+            </thead>
+            <tbody id="d4_table">
+              <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- LOG TAB -->
   <div class="tab-content" id="tab-log">
     <div class="date-banner navy"><div class="date-banner-left"><div class="date-icon">📋</div><div><div class="date-banner-title">Log Masuk Pengguna</div><div class="date-banner-sub">Rekod semua aktiviti log masuk dan log keluar</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="log_count">—</div><div class="date-banner-label">Jumlah sesi</div></div></div>
     <div class="kpi-row">
@@ -398,26 +525,48 @@
 </div>
 
 <script>
-// ========== CONFIG ==========
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx4bVufZQt7TuPm8qzEMknqQkeNoDEJiMevGewmrxlKcY6eaZAIFmXMCgOtopek-8_r/exec';
+const ANGGOTA_PASSWORD = 'SSPDRM2026';
   
-// Pre-warm the script (runs once when page loads)
 fetch(APPS_SCRIPT_URL + '?action=warmup&t=' + Date.now()).catch(() => {});
 
-// District mapping (unchanged)
 const TAB_LABELS = { today:'📅 Hari Ini (Semua)', d1:'🔴 Melaka Tengah', d2:'🟢 Jasin', d3:'🟡 Alor Gajah', d4:'🟣 IPK SSPDRM' };
 const DAERAH_MAP = { d1:'MELAKA TENGAH', d2:'JASIN', d3:'ALOR GAJAH', d4:'IPK SSPDRM' };
 const COLORS = ['#003087','#0a3fa8','#1d4ed8','#2563eb','#3b82f6','#60a5fa','#dc2626','#16a34a','#d97706','#7c3aed'];
 
-// Global state
 let allData = [];
 let charts = {};
 let countdownSec = 300;
 let countdownTimer;
-let currentUser = null;          // { username, role, district }
-let currentToken = null;         // stored after login
+let currentUser = null;
+let currentToken = null;
+let currentDateData = []; // Store data for currently selected date
 
-// ========== HELPER FUNCTIONS (from original, unchanged) ==========
+let unlockedTabs = { d1: false, d2: false, d3: false, d4: false };
+
+function unlockAnggota(tabId) {
+  const passwordInput = document.getElementById(`anggotaPassword${tabId.toUpperCase()}`);
+  const unlockError = document.getElementById(`unlockError${tabId.toUpperCase()}`);
+  const protectedContent = document.getElementById(`protectedAnggota${tabId.toUpperCase()}`);
+  const unlockSection = document.getElementById(`unlockSection${tabId.toUpperCase()}`);
+  
+  if (passwordInput.value === ANGGOTA_PASSWORD) {
+    protectedContent.classList.add('visible');
+    unlockSection.style.display = 'none';
+    unlockError.style.display = 'none';
+    unlockedTabs[tabId] = true;
+    
+    // Refresh with current date data
+    if (currentDateData.length > 0) {
+      const districtData = currentDateData.filter(r => normDaerah(r.daerah) === DAERAH_MAP[tabId]);
+      renderDistrictTab(tabId, districtData, getSelectedDateFull());
+    }
+  } else {
+    unlockError.style.display = 'block';
+    passwordInput.value = '';
+  }
+}
+
 function getTodayStr(){ const n=new Date(); return n.getDate()+'/'+(n.getMonth()+1)+'/'+n.getFullYear(); }
 function getTodayFull(){ const n=new Date(), days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'], months=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember']; return days[n.getDay()]+', '+n.getDate()+' '+months[n.getMonth()]+' '+n.getFullYear(); }
 function normaliseDate(str){ if(!str) return ''; str=str.trim(); if(str.includes('T')){ const d=new Date(str); const myt=new Date(d.getTime()+8*60*60*1000); return myt.getUTCDate()+'/'+(myt.getUTCMonth()+1)+'/'+myt.getUTCFullYear(); } if(str.includes('-')){ const p=str.split('-'); if(p.length===3) return parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0]; } const p=str.split('/'); if(p.length===3) return parseInt(p[0])+'/'+parseInt(p[1])+'/'+p[2]; return str; }
@@ -431,36 +580,42 @@ function countBy(data,key){ const m={}; data.forEach(d=>{ const v=d[key]||'Lain'
 function makeChart(id,type,labels,values,colors){ if(charts[id]) charts[id].destroy(); const el=document.getElementById(id); if(!el) return; charts[id]=new Chart(el.getContext('2d'),{type,data:{labels,datasets:[{data:values,backgroundColor:colors.slice(0,values.length),borderColor:colors.slice(0,values.length),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:type==='doughnut',position:'right',labels:{font:{family:'Inter',size:11},padding:10,usePointStyle:true}},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}},scales:type!=='doughnut'?{x:{grid:{display:false},ticks:{font:{family:'Inter',size:10},maxRotation:40}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Inter',size:10}}}}:{}}}); }
 function showAlert(type,msg){ const el=document.getElementById(type==='error'?'alertError':'alertInfo'); if(el){el.textContent=msg;el.style.display=msg?'block':'none';} }
 
-// ========== AUTHENTICATION ==========
 async function doLogin() {
   const username = document.getElementById('loginUser').value.trim().toLowerCase();
   const token = document.getElementById('loginToken').value;
   const errEl = document.getElementById('loginError');
+  const loginBtn = document.getElementById('loginBtn');
+  const originalText = loginBtn.innerHTML;
+  
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span class="spinner">⚡</span> MEMUAT...';
+  errEl.style.display = 'none';
 
   try {
-    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}`;
+    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.error) {
       errEl.style.display = 'block';
       document.getElementById('loginToken').value = '';
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = originalText;
       return;
     }
 
-    // Login successful
-    currentUser = data;               // { username, role, district }
+    currentUser = data;
     currentToken = token;
     sessionStorage.setItem('dashUser', JSON.stringify(currentUser));
     sessionStorage.setItem('dashToken', token);
 
-    // Record login in LOGS sheet
     await saveLog('login');
-
     showDashboard();
   } catch (e) {
     errEl.style.display = 'block';
     document.getElementById('loginToken').value = '';
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = originalText;
   }
 }
 
@@ -489,7 +644,6 @@ function showDashboard() {
   document.getElementById('userPillName').textContent = currentUser.username.toUpperCase();
   document.getElementById('sheetUrl').value = APPS_SCRIPT_URL;
 
-  // Show/hide tabs based on role
   if (currentUser.role === 'admin') {
     document.getElementById('urlBar').style.display = 'flex';
     ['today','d1','d2','d3','d4'].forEach(t => document.getElementById('tab_btn_'+t).classList.remove('hidden'));
@@ -502,7 +656,7 @@ function showDashboard() {
     document.getElementById('tab_btn_log').classList.add('hidden');
     switchTab(currentUser.district);
   }
-
+  
   loadData();
 }
 
@@ -518,10 +672,9 @@ async function doLogout() {
   document.getElementById('loginToken').value = '';
 }
 
-// ========== DATA LOADING ==========
 async function loadData() {
   if (!currentUser || !currentToken) return;
-  const dateParam = getSelectedDateStr(); // from picker
+  const dateParam = getSelectedDateStr();
   const url = `${APPS_SCRIPT_URL}?action=getData&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&date=${encodeURIComponent(dateParam)}`;
   showAlert('info', '⏳ Memuatkan data...');
   try {
@@ -538,7 +691,12 @@ async function loadData() {
       return;
     }
     allData = expandRows(json.rows);
-    if (!allData.length) {
+    
+    // Filter for selected date only
+    const selStr = getSelectedDateStr();
+    currentDateData = allData.filter(r => normaliseDate(r.tarikh) === selStr);
+    
+    if (!currentDateData.length) {
       showAlert('error', '❌ Tiada data untuk tarikh ini.');
     } else {
       showAlert('info', '');
@@ -555,7 +713,6 @@ async function loadData() {
   }
 }
 
-// ========== LOG TAB (admin only) ==========
 async function renderLogTab() {
   if (!currentUser || currentUser.role !== 'admin') return;
   const url = `${APPS_SCRIPT_URL}?action=getLogs&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}`;
@@ -579,13 +736,11 @@ async function renderLogTab() {
   }
 }
 
-// Clear log
 function clearLog() {
   if (!confirm('Padam semua rekod log masuk?')) return;
   alert('Fungsi padam log belum diaktifkan di pelayan.');
 }
 
-// ========== UI FUNCTIONS ==========
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => { const id = t.id.replace('tab_btn_',''); t.classList.toggle('active', id === name); });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -616,11 +771,19 @@ function getSelectedDateFull() {
 
 function onDatePickerChange() {
   if (!allData.length) return;
-  const selStr = getSelectedDateStr(), selFull = getSelectedDateFull();
-  const selData = allData.filter(r => normaliseDate(r.tarikh) === selStr);
-  const tabsToRender = currentUser.role === 'admin' ? ['today','d1','d2','d3','d4'] : [currentUser.district];
-  if (tabsToRender.includes('today')) renderTab('today', selData, selFull, true);
-  ['d1','d2','d3','d4'].forEach(key => { if (!tabsToRender.includes(key)) return; renderTab(key, selData.filter(r => normDaerah(r.daerah) === DAERAH_MAP[key]), selFull, false); });
+  const selStr = getSelectedDateStr();
+  const selFull = getSelectedDateFull();
+  
+  // Update current date data
+  currentDateData = allData.filter(r => normaliseDate(r.tarikh) === selStr);
+  
+  // Update all tabs with new date data
+  renderSemuaDaerahTab(currentDateData, selFull);
+  
+  ['d1','d2','d3','d4'].forEach(key => {
+    const districtData = currentDateData.filter(r => normDaerah(r.daerah) === DAERAH_MAP[key]);
+    renderDistrictTab(key, districtData, selFull);
+  });
 }
 
 function renderAll() {
@@ -632,91 +795,89 @@ function renderAll() {
   onDatePickerChange();
 }
 
-function renderTab(key, data, dateStr, isAll) {
-  const pre = key + '_';
-
-  // Update banner and KPI elements
-  const titleEl = document.getElementById(pre + 'title');
-  if (titleEl) titleEl.textContent = dateStr;
-  const subEl = document.getElementById(pre + 'sub');
-  if (subEl) subEl.textContent = dateStr;
-  document.getElementById(pre + 'count').textContent = data.length;
-
+function renderSemuaDaerahTab(data, dateStr) {
+  document.getElementById('today_title').textContent = dateStr;
+  document.getElementById('today_count').textContent = data.length;
+  
   const totalJam = data.reduce((s, d) => s + (d.jam || 0), 0);
-  document.getElementById(pre + 'k1').textContent = data.length;
+  document.getElementById('today_k1').textContent = data.length;
+  document.getElementById('today_k2').textContent = new Set(data.map(d => d.daerah).filter(Boolean)).size;
+  document.getElementById('today_k3').textContent = totalJam;
+  document.getElementById('today_k4').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
+  document.getElementById('today_k5').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
+  document.getElementById('today_b1').textContent = data.length + ' rekod';
+  document.getElementById('today_tb').textContent = data.length + ' anggota';
 
-  if (isAll) {
-    document.getElementById(pre + 'k2').textContent = new Set(data.map(d => d.daerah).filter(Boolean)).size;
-    document.getElementById(pre + 'k3').textContent = totalJam;
-    document.getElementById(pre + 'k4').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
-    document.getElementById(pre + 'k5').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
-    document.getElementById(pre + 'b1').textContent = data.length + ' rekod';
-  } else {
-    document.getElementById(pre + 'k2').textContent = totalJam;
-    document.getElementById(pre + 'k3').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
-    document.getElementById(pre + 'k4').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
-  }
+  const byDaerah = countBy(data, 'daerah');
+  makeChart('today_c1', 'bar', Object.keys(byDaerah), Object.values(byDaerah), COLORS);
+  
+  renderPenugasanCard('today_pngs_card', data, dateStr, true);
 
-  document.getElementById(pre + 'tb').textContent = data.length + ' anggota';
-
-  // Charts
-  if (isAll) {
-    const byDaerah = countBy(data, 'daerah');
-    makeChart(pre + 'c1', 'bar', Object.keys(byDaerah), Object.values(byDaerah), COLORS);
-  } else {
-    const byBalai = countBy(data, 'balai');
-    makeChart(pre + 'c1', 'bar', Object.keys(byBalai).map(l => l.replace('BALAI POLIS ', '')), Object.values(byBalai), COLORS);
-  }
-
-  renderPenugasanCard(key + '_pngs_card', data, dateStr, isAll);
-
-  // Table
-  const tbody = document.getElementById(pre + 'table');
+  const tbody = document.getElementById('today_table');
   if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan hari ini</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
     return;
   }
 
-  if (isAll) {
-    // Group data by district for "Semua Daerah" tab
-    const groupedByDistrict = {};
-    data.forEach(item => {
-      const district = item.daerah || 'LAIN';
-      if (!groupedByDistrict[district]) {
-        groupedByDistrict[district] = [];
-      }
-      groupedByDistrict[district].push(item);
+  const groupedByDistrict = {};
+  data.forEach(item => {
+    const district = item.daerah || 'LAIN';
+    if (!groupedByDistrict[district]) {
+      groupedByDistrict[district] = [];
+    }
+    groupedByDistrict[district].push(item);
+  });
+
+  let html = '';
+  let globalCounter = 1;
+  const sortedDistricts = Object.keys(groupedByDistrict).sort();
+
+  sortedDistricts.forEach(district => {
+    html += `<tr class="district-header"><td colspan="9"><strong>📍 ${district}</strong> (${groupedByDistrict[district].length} anggota)</td></tr>`;
+    groupedByDistrict[district].forEach(r => {
+      html += `<tr>
+        <td style="color:var(--muted);font-size:11px;">${globalCounter++}</td>
+        <td style="font-size:11px;">${r.timestamp ? new Date(r.timestamp).toLocaleString('ms-MY') : '—'}</td>
+        <td><strong style="color:var(--navy)">${r.daerah}</strong></td>
+        <td><strong>${r.nama}</strong></td>
+        <td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td>
+        <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
+        <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
+        <td><strong>${r.jam || '—'}</strong></td>
+        <td>${r.masa || '—'}</td>
+      </tr>`;
     });
+  });
 
-    let html = '';
-    let globalCounter = 1;
+  tbody.innerHTML = html;
+  renderSummaryTable('today_table', data);
+}
 
-    // Sort districts
-    const sortedDistricts = Object.keys(groupedByDistrict).sort();
+function renderDistrictTab(key, data, dateStr) {
+  const pre = key + '_';
 
-    sortedDistricts.forEach(district => {
-      // Add district header row
-      html += `<tr class="district-header"><td colspan="9"><strong>📍 ${district}</strong> (${groupedByDistrict[district].length} anggota)</td></tr>`;
+  document.getElementById(pre + 'sub').textContent = dateStr;
+  document.getElementById(pre + 'count').textContent = data.length;
+  
+  const totalJam = data.reduce((s, d) => s + (d.jam || 0), 0);
+  document.getElementById(pre + 'k1').textContent = data.length;
+  document.getElementById(pre + 'k2').textContent = totalJam;
+  document.getElementById(pre + 'k3').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
+  document.getElementById(pre + 'k4').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
+  document.getElementById(pre + 'tb').textContent = data.length + ' anggota';
 
-      // Add rows for this district
-      groupedByDistrict[district].forEach(r => {
-        html += `<tr>
-          <td style="color:var(--muted);font-size:11px;">${globalCounter++}</td>
-          <td style="font-size:11px;">${r.timestamp ? new Date(r.timestamp).toLocaleString('ms-MY') : '—'}</td>
-          <td><strong style="color:var(--navy)">${r.daerah}</strong></td>
-          <td><strong>${r.nama}</strong></td>
-          <td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td>
-          <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
-          <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
-          <td><strong>${r.jam || '—'}</strong></td>
-          <td>${r.masa || '—'}</td>
-        </tr>`;
-      });
-    });
+  const byBalai = countBy(data, 'balai');
+  makeChart(pre + 'c1', 'bar', Object.keys(byBalai).map(l => l.replace('BALAI POLIS ', '')), Object.values(byBalai), COLORS);
+  
+  renderPenugasanCard(key + '_pngs_card', data, dateStr, false);
 
-    tbody.innerHTML = html;
-  } else {
-    // District-specific tabs (no Balai Pendaftaran column)
+  if (unlockedTabs[key]) {
+    const tbody = document.getElementById(pre + 'table');
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
+      return;
+    }
+    
     tbody.innerHTML = data.map((r, i) => `<tr>
       <td style="color:var(--muted);font-size:11px;">${i+1}</td>
       <td style="font-size:12px;">${r.pangkat || '—'}</td>
@@ -729,8 +890,6 @@ function renderTab(key, data, dateStr, isAll) {
       <td>${r.pejawatan || '—'}</td>
     </tr>`).join('');
   }
-
-  renderSummaryTable(pre + 'table', data);
 }
 
 function renderPenugasanCard(cardId, data, dateStr, isAll) {
@@ -854,7 +1013,6 @@ function updateClock() {
   document.getElementById('headerTime').textContent = now.toLocaleTimeString('ms-MY');
 }
 
-// On page load, check if session exists
 window.addEventListener('DOMContentLoaded', async () => {
   const savedUser = sessionStorage.getItem('dashUser');
   const savedToken = sessionStorage.getItem('dashToken');
