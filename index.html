@@ -122,6 +122,27 @@
   .pngs-table tr:last-child td{border-bottom:none;}
   .pngs-table tr.pngs-grand td{background:#d0d0d0;font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;color:#222;padding:10px 18px;}
   .pngs-table tr.pngs-grand td.td-num-g{text-align:center;font-family:'Rajdhani',sans-serif;font-size:17px;}
+
+  /* New style for district headers in the table */
+  .district-header {
+    background-color: var(--navy-mid);
+    color: white;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 2px solid var(--gold);
+  }
+  .district-header td {
+    background-color: var(--navy-mid);
+    color: var(--gold);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    padding: 8px 14px;
+    text-align: left;
+  }
+   /* Loading spinner animation */
+  @keyframes spin { 
+    100% { transform: rotate(360deg); } 
+  }
 </style>
 </head>
 <body>
@@ -176,7 +197,7 @@
   <div class="alert alert-error" id="alertError"></div>
   <div class="alert alert-info"  id="alertInfo"></div>
 
-  <!-- All tab contents identical to original, but they will be filled by JavaScript -->
+  <!-- All tab contents -->
   <div class="tab-content active" id="tab-today">
     <div class="date-banner navy"><div class="date-banner-left"><div class="date-icon">📅</div><div><div class="date-banner-title" id="today_title">—</div><div class="date-banner-sub">Semua daerah · Tarikh penugasan dipilih</div></div></div><div class="date-banner-count"><div class="date-banner-num" id="today_count">—</div><div class="date-banner-label">Jumlah anggota bertugas</div></div></div>
     <div class="kpi-row">
@@ -192,7 +213,26 @@
     </div>
     <div class="table-wrap">
       <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota Bertugas Hari Ini</div><div class="card-badge" id="today_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>#</th><th>Daerah</th><th>Nama & No. Badan</th><th>Balai Pendaftaran</th><th>Balai Bertugas</th><th>Jenis Tugasan</th><th>Jam</th><th>Masa Mula</th></tr></thead><tbody id="today_table"><tr><td colspan="8" class="loading">Memuatkan data...</td></tr></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Timestamp</th>
+              <th>Daerah</th>
+              <th>Nama & No. Badan</th>
+              <th>Balai Pendaftaran</th>
+              <th>Balai Bertugas</th>
+              <th>Jenis Tugasan</th>
+              <th>Jam</th>
+              <th>Masa Mula</th>
+            </tr>
+          </thead>
+          <tbody id="today_table">
+            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -210,7 +250,26 @@
     </div>
     <div class="table-wrap">
       <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Melaka Tengah</div><div class="card-badge" id="d1_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>#</th><th>Pangkat</th><th>Nama & No. Badan</th><th>Balai Pendaftaran</th><th>Balai Bertugas</th><th>Jenis Tugasan</th><th>Jam</th><th>Masa Mula</th><th>Jantina</th><th>Pejawatan</th></tr></thead><tbody id="d1_table"><tr><td colspan="10" class="loading">Memuatkan data...</td></tr></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pangkat</th>
+              <th>Nama & No. Badan</th>
+              <th>Balai Bertugas</th>
+              <th>Jenis Tugasan</th>
+              <th>Jam</th>
+              <th>Masa Mula</th>
+              <th>Jantina</th>
+              <th>Pejawatan</th>
+            </tr>
+          </thead>
+          <tbody id="d1_table">
+            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -228,7 +287,26 @@
     </div>
     <div class="table-wrap">
       <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Jasin</div><div class="card-badge" id="d2_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>#</th><th>Pangkat</th><th>Nama & No. Badan</th><th>Balai Pendaftaran</th><th>Balai Bertugas</th><th>Jenis Tugasan</th><th>Jam</th><th>Masa Mula</th><th>Jantina</th><th>Pejawatan</th></tr></thead><tbody id="d2_table"><tr><td colspan="10" class="loading">Memuatkan data...</td></tr></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pangkat</th>
+              <th>Nama & No. Badan</th>
+              <th>Balai Bertugas</th>
+              <th>Jenis Tugasan</th>
+              <th>Jam</th>
+              <th>Masa Mula</th>
+              <th>Jantina</th>
+              <th>Pejawatan</th>
+            </tr>
+          </thead>
+          <tbody id="d2_table">
+            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -246,7 +324,26 @@
     </div>
     <div class="table-wrap">
       <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — Alor Gajah</div><div class="card-badge" id="d3_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>#</th><th>Pangkat</th><th>Nama & No. Badan</th><th>Balai Pendaftaran</th><th>Balai Bertugas</th><th>Jenis Tugasan</th><th>Jam</th><th>Masa Mula</th><th>Jantina</th><th>Pejawatan</th></tr></thead><tbody id="d3_table"><tr><td colspan="10" class="loading">Memuatkan data...</td></tr></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pangkat</th>
+              <th>Nama & No. Badan</th>
+              <th>Balai Bertugas</th>
+              <th>Jenis Tugasan</th>
+              <th>Jam</th>
+              <th>Masa Mula</th>
+              <th>Jantina</th>
+              <th>Pejawatan</th>
+            </tr>
+          </thead>
+          <tbody id="d3_table">
+            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -264,7 +361,26 @@
     </div>
     <div class="table-wrap">
       <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">Senarai Anggota — IPK SSPDRM</div><div class="card-badge" id="d4_tb">—</div></div>
-      <div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>#</th><th>Pangkat</th><th>Nama & No. Badan</th><th>Balai Pendaftaran</th><th>Balai Bertugas</th><th>Jenis Tugasan</th><th>Jam</th><th>Masa Mula</th><th>Jantina</th><th>Pejawatan</th></tr></thead><tbody id="d4_table"><tr><td colspan="10" class="loading">Memuatkan data...</td></tr></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Pangkat</th>
+              <th>Nama & No. Badan</th>
+              <th>Balai Bertugas</th>
+              <th>Jenis Tugasan</th>
+              <th>Jam</th>
+              <th>Masa Mula</th>
+              <th>Jantina</th>
+              <th>Pejawatan</th>
+            </tr>
+          </thead>
+          <tbody id="d4_table">
+            <tr><td colspan="9" class="loading">Memuatkan data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -320,21 +436,49 @@ function makeChart(id,type,labels,values,colors){ if(charts[id]) charts[id].dest
 function showAlert(type,msg){ const el=document.getElementById(type==='error'?'alertError':'alertInfo'); if(el){el.textContent=msg;el.style.display=msg?'block':'none';} }
 
 // ========== AUTHENTICATION ==========
+// ========== AUTHENTICATION WITH PROGRESS ==========
 async function doLogin() {
   const username = document.getElementById('loginUser').value.trim().toLowerCase();
   const token = document.getElementById('loginToken').value;
   const errEl = document.getElementById('loginError');
+  const loginBtn = document.querySelector('.btn-login');
+  const originalBtnText = loginBtn.textContent;
+  
+  // Disable button and show loading state
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite;">⚡</span> MEMUAT...';
+  errEl.style.display = 'none';
 
   try {
-    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}`;
+    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.error) {
       errEl.style.display = 'block';
       document.getElementById('loginToken').value = '';
+      loginBtn.disabled = false;
+      loginBtn.textContent = originalBtnText;
       return;
     }
+
+    // Login successful
+    currentUser = data;
+    currentToken = token;
+    sessionStorage.setItem('dashUser', JSON.stringify(currentUser));
+    sessionStorage.setItem('dashToken', token);
+
+    // Record login in LOGS sheet
+    await saveLog('login');
+
+    showDashboard();
+  } catch (e) {
+    errEl.style.display = 'block';
+    document.getElementById('loginToken').value = '';
+    loginBtn.disabled = false;
+    loginBtn.textContent = originalBtnText;
+  }
+}
 
     // Login successful
     currentUser = data;               // { username, role, district }
@@ -406,7 +550,7 @@ async function doLogout() {
   document.getElementById('loginToken').value = '';
 }
 
-// ========== DATA LOADING (now with auth) ==========
+// ========== DATA LOADING ==========
 async function loadData() {
   if (!currentUser || !currentToken) return;
   const dateParam = getSelectedDateStr(); // from picker
@@ -467,14 +611,13 @@ async function renderLogTab() {
   }
 }
 
-// Clear log (still uses localStorage? Better to implement a server-side clear, but we'll keep as is for now)
+// Clear log
 function clearLog() {
   if (!confirm('Padam semua rekod log masuk?')) return;
-  // For now, we don't implement server-side clear. You could add an action 'clearLogs' in Apps Script.
   alert('Fungsi padam log belum diaktifkan di pelayan.');
 }
 
-// ========== REST OF THE UI FUNCTIONS (mostly unchanged) ==========
+// ========== UI FUNCTIONS ==========
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => { const id = t.id.replace('tab_btn_',''); t.classList.toggle('active', id === name); });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -523,7 +666,6 @@ function renderAll() {
 
 function renderTab(key, data, dateStr, isAll) {
   const pre = key + '_';
-  const tabId = 'tab-' + key;
 
   // Update banner and KPI elements
   const titleEl = document.getElementById(pre + 'title');
@@ -568,9 +710,56 @@ function renderTab(key, data, dateStr, isAll) {
   }
 
   if (isAll) {
-    tbody.innerHTML = data.map((r, i) => `<tr><td style="color:var(--muted);font-size:11px;">${i+1}</td><td><strong style="color:var(--navy)">${r.daerah}</strong></td><td><strong>${r.nama}</strong></td><td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td><td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td><td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td><td><strong>${r.jam || '—'}</strong></td><td>${r.masa || '—'}</td></tr>`).join('');
+    // Group data by district for "Semua Daerah" tab
+    const groupedByDistrict = {};
+    data.forEach(item => {
+      const district = item.daerah || 'LAIN';
+      if (!groupedByDistrict[district]) {
+        groupedByDistrict[district] = [];
+      }
+      groupedByDistrict[district].push(item);
+    });
+
+    let html = '';
+    let globalCounter = 1;
+
+    // Sort districts
+    const sortedDistricts = Object.keys(groupedByDistrict).sort();
+
+    sortedDistricts.forEach(district => {
+      // Add district header row
+      html += `<tr class="district-header"><td colspan="9"><strong>📍 ${district}</strong> (${groupedByDistrict[district].length} anggota)</td></tr>`;
+
+      // Add rows for this district
+      groupedByDistrict[district].forEach(r => {
+        html += `<tr>
+          <td style="color:var(--muted);font-size:11px;">${globalCounter++}</td>
+          <td style="font-size:11px;">${r.timestamp ? new Date(r.timestamp).toLocaleString('ms-MY') : '—'}</td>
+          <td><strong style="color:var(--navy)">${r.daerah}</strong></td>
+          <td><strong>${r.nama}</strong></td>
+          <td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td>
+          <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
+          <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
+          <td><strong>${r.jam || '—'}</strong></td>
+          <td>${r.masa || '—'}</td>
+        </tr>`;
+      });
+    });
+
+    tbody.innerHTML = html;
   } else {
-    tbody.innerHTML = data.map((r, i) => `<tr><td style="color:var(--muted);font-size:11px;">${i+1}</td><td style="font-size:12px;">${r.pangkat || '—'}</td><td><strong>${r.nama}</strong></td><td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td><td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td><td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td><td><strong>${r.jam || '—'}</strong></td><td>${r.masa || '—'}</td><td>${r.jantina || '—'}</td><td>${r.pejawatan || '—'}</td></tr>`).join('');
+    // District-specific tabs (no Balai Pendaftaran column)
+    tbody.innerHTML = data.map((r, i) => `<tr>
+      <td style="color:var(--muted);font-size:11px;">${i+1}</td>
+      <td style="font-size:12px;">${r.pangkat || '—'}</td>
+      <td><strong>${r.nama}</strong></td>
+      <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
+      <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
+      <td><strong>${r.jam || '—'}</strong></td>
+      <td>${r.masa || '—'}</td>
+      <td>${r.jantina || '—'}</td>
+      <td>${r.pejawatan || '—'}</td>
+    </tr>`).join('');
   }
 
   renderSummaryTable(pre + 'table', data);
