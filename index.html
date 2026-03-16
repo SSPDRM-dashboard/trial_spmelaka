@@ -139,10 +139,6 @@
     padding: 8px 14px;
     text-align: left;
   }
-   /* Loading spinner animation */
-  @keyframes spin { 
-    100% { transform: rotate(360deg); } 
-  }
 </style>
 </head>
 <body>
@@ -436,49 +432,21 @@ function makeChart(id,type,labels,values,colors){ if(charts[id]) charts[id].dest
 function showAlert(type,msg){ const el=document.getElementById(type==='error'?'alertError':'alertInfo'); if(el){el.textContent=msg;el.style.display=msg?'block':'none';} }
 
 // ========== AUTHENTICATION ==========
-// ========== AUTHENTICATION WITH PROGRESS ==========
 async function doLogin() {
   const username = document.getElementById('loginUser').value.trim().toLowerCase();
   const token = document.getElementById('loginToken').value;
   const errEl = document.getElementById('loginError');
-  const loginBtn = document.querySelector('.btn-login');
-  const originalBtnText = loginBtn.textContent;
-  
-  // Disable button and show loading state
-  loginBtn.disabled = true;
-  loginBtn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite;">⚡</span> MEMUAT...';
-  errEl.style.display = 'none';
 
   try {
-    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}`;
     const response = await fetch(url);
     const data = await response.json();
 
     if (data.error) {
       errEl.style.display = 'block';
       document.getElementById('loginToken').value = '';
-      loginBtn.disabled = false;
-      loginBtn.textContent = originalBtnText;
       return;
     }
-
-    // Login successful
-    currentUser = data;
-    currentToken = token;
-    sessionStorage.setItem('dashUser', JSON.stringify(currentUser));
-    sessionStorage.setItem('dashToken', token);
-
-    // Record login in LOGS sheet
-    await saveLog('login');
-
-    showDashboard();
-  } catch (e) {
-    errEl.style.display = 'block';
-    document.getElementById('loginToken').value = '';
-    loginBtn.disabled = false;
-    loginBtn.textContent = originalBtnText;
-  }
-}
 
     // Login successful
     currentUser = data;               // { username, role, district }
