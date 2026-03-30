@@ -525,14 +525,33 @@
 </div>
 
 <script>
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx4bVufZQt7TuPm8qzEMknqQkeNoDEJiMevGewmrxlKcY6eaZAIFmXMCgOtopek-8_r/exec';
-const ANGGOTA_PASSWORD = 'SSPDRM2026';
-  
-fetch(APPS_SCRIPT_URL + '?action=warmup&t=' + Date.now()).catch(() => {});
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyICf49UavmO6vYlMLp5yBrnVKHcyS6AMtGgKw39j6BKZcaBg4Lp_VgauS_WYcaBwu_/exec';
+let DISTRICT_PASSWORDS = {};
+let caianUnlockedDistrict = null;
+
+const warmupPromise = fetch(APPS_SCRIPT_URL + '?action=warmup&t=' + Date.now())
+  .then(() => {
+    const el = document.getElementById('warmupStatus');
+    if (el) { el.textContent = '✅ Pelayan bersedia'; el.className = 'warmup-status ready'; }
+  })
+  .catch(() => {
+    const el = document.getElementById('warmupStatus');
+    if (el) { el.textContent = '⚠️ Tidak dapat menyambung — Cuba semula'; el.className = 'warmup-status'; }
+  });
 
 const TAB_LABELS = { today:'📅 Hari Ini (Semua)', d1:'🔴 Melaka Tengah', d2:'🟢 Jasin', d3:'🟡 Alor Gajah', d4:'🟣 IPK SSPDRM' };
 const DAERAH_MAP = { d1:'MELAKA TENGAH', d2:'JASIN', d3:'ALOR GAJAH', d4:'IPK SSPDRM' };
 const COLORS = ['#003087','#0a3fa8','#1d4ed8','#2563eb','#3b82f6','#60a5fa','#dc2626','#16a34a','#d97706','#7c3aed'];
+
+function isFullAdmin(){
+  if(!currentUser || currentUser.role !== 'admin') return false;
+  return (currentUser.district || '').trim() === '';
+}
+function isDashAdmin(){
+  if(!currentUser || currentUser.role !== 'admin') return false;
+  return (currentUser.district || '').trim() !== '';
+}
+function isAnyAdmin(){ return currentUser && currentUser.role === 'admin'; }
 
 let allData = [];
 let charts = {};
@@ -540,485 +559,792 @@ let countdownSec = 300;
 let countdownTimer;
 let currentUser = null;
 let currentToken = null;
-let currentDateData = []; // Store data for currently selected date
-
+let currentDateData = [];
 let unlockedTabs = { d1: false, d2: false, d3: false, d4: false };
 
-function unlockAnggota(tabId) {
-  const passwordInput = document.getElementById(`anggotaPassword${tabId.toUpperCase()}`);
-  const unlockError = document.getElementById(`unlockError${tabId.toUpperCase()}`);
-  const protectedContent = document.getElementById(`protectedAnggota${tabId.toUpperCase()}`);
-  const unlockSection = document.getElementById(`unlockSection${tabId.toUpperCase()}`);
-  
-  if (passwordInput.value === ANGGOTA_PASSWORD) {
-    protectedContent.classList.add('visible');
-    unlockSection.style.display = 'none';
-    unlockError.style.display = 'none';
-    unlockedTabs[tabId] = true;
-    
-    // Refresh with current date data
-    if (currentDateData.length > 0) {
-      const districtData = currentDateData.filter(r => normDaerah(r.daerah) === DAERAH_MAP[tabId]);
-      renderDistrictTab(tabId, districtData, getSelectedDateFull());
-    }
-  } else {
-    unlockError.style.display = 'block';
-    passwordInput.value = '';
-  }
+// ── Idle Auto-Logout ─────────────────────────────────────────
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+let idleTimer = null;
+let sessionPingInterval = null;
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    if (!currentUser) return;
+    clearTimeout(idleTimer);
+    clearInterval(sessionPingInterval);
+    alert('⏰ Sesi anda telah tamat kerana tidak aktif selama 10 minit. Anda akan dilog keluar.');
+    await doLogout();
+  }, IDLE_TIMEOUT_MS);
 }
+
+function startIdleDetection() {
+  const events = ['mousemove','mousedown','keypress','keydown','scroll','touchstart','click'];
+  events.forEach(evt => document.addEventListener(evt, resetIdleTimer, { passive: true }));
+  resetIdleTimer();
+}
+
+function stopIdleDetection() {
+  clearTimeout(idleTimer);
+  const events = ['mousemove','mousedown','keypress','keydown','scroll','touchstart','click'];
+  events.forEach(evt => document.removeEventListener(evt, resetIdleTimer));
+}
+
+function startSessionPing() {
+  // Ping server every 2 minutes to validate session
+  sessionPingInterval = setInterval(async () => {
+    if (!currentUser || !currentToken) return;
+    try {
+      const url = `${APPS_SCRIPT_URL}?action=validateSession&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&t=${Date.now()}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (!data.valid) {
+        stopIdleDetection();
+        clearInterval(sessionPingInterval);
+        if (data.error === 'idle_timeout') {
+          alert('⏰ Sesi anda telah tamat kerana tidak aktif selama 10 minit. Anda akan dilog keluar.');
+        }
+        // Clear session storage and reset UI without calling doLogout
+        // (avoids double-saveLog call)
+        sessionStorage.removeItem('dashUser');
+        sessionStorage.removeItem('dashToken');
+        currentUser = null; currentToken = null;
+        document.getElementById('loginPage').style.display = 'flex';
+        document.getElementById('dashboardPage').style.display = 'none';
+        document.getElementById('loginUser').value = '';
+        document.getElementById('loginToken').value = '';
+      }
+    } catch(e) {
+      console.warn('Session ping failed:', e);
+    }
+  }, 2 * 60 * 1000);
+}
+
+function stopSessionPing() {
+  clearInterval(sessionPingInterval);
+}
+
+// ── Utility helpers ──────────────────────────────────────────────
 
 function getTodayStr(){ const n=new Date(); return n.getDate()+'/'+(n.getMonth()+1)+'/'+n.getFullYear(); }
 function getTodayFull(){ const n=new Date(), days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'], months=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember']; return days[n.getDay()]+', '+n.getDate()+' '+months[n.getMonth()]+' '+n.getFullYear(); }
-function normaliseDate(str){ if(!str) return ''; str=str.trim(); if(str.includes('T')){ const d=new Date(str); const myt=new Date(d.getTime()+8*60*60*1000); return myt.getUTCDate()+'/'+(myt.getUTCMonth()+1)+'/'+myt.getUTCFullYear(); } if(str.includes('-')){ const p=str.split('-'); if(p.length===3) return parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0]; } const p=str.split('/'); if(p.length===3) return parseInt(p[0])+'/'+parseInt(p[1])+'/'+p[2]; return str; }
+
+function normaliseDate(str){
+  if(!str) return '';
+  str = str.trim();
+  if(str.includes('T')){
+    const d = new Date(str);
+    if(isNaN(d.getTime())) return str;
+    const parts = new Intl.DateTimeFormat('en-MY',{timeZone:'Asia/Kuala_Lumpur',day:'numeric',month:'numeric',year:'numeric'}).formatToParts(d);
+    const get = t => parts.find(p=>p.type===t)?.value||'0';
+    return parseInt(get('day'))+'/'+parseInt(get('month'))+'/'+get('year');
+  }
+  if(str.includes('-')){
+    const p = str.split('-');
+    if(p.length === 3){
+      const d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+      if(!isNaN(d.getTime())) return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
+    }
+  }
+  const p = str.split('/');
+  if(p.length === 3) return parseInt(p[0])+'/'+parseInt(p[1])+'/'+p[2];
+  return str;
+}
+
 function normDaerah(s){ return String(s||'').toUpperCase().replace(/\s+/g,' ').trim(); }
-function formatTime(val){ if(!val||val===''||val==='0') return '—'; const s=String(val).trim(); if(/^\d{1,2}:\d{2}/.test(s)){ const p=s.split(':'); return p[0].padStart(2,'0')+':'+p[1]; } const match=s.match(/(\d{1,2}):(\d{2}):\d{2}/); if(match) return match[1].padStart(2,'0')+':'+match[2]; if(s.includes('T')){ const d=new Date(s); const myt=new Date(d.getTime()+8*60*60*1000); return String(myt.getUTCHours()).padStart(2,'0')+':'+String(myt.getUTCMinutes()).padStart(2,'0'); } const num=parseFloat(s); if(!isNaN(num)&&num>0&&num<1){ const t=Math.round(num*24*60); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); } return s; }
-function expandRows(rows){ const out=[]; rows.forEach(row=>{ const timestamp=String(row[0]||''); const daerah=normDaerah(row[1]); const bertugas=String(row[10]||'').trim(); const pejawatan=String(row[12]||'').trim(); const jantina=String(row[13]||'').trim(); const pangkat=String(row[14]||'').trim(); const tarikh=String(row[15]||'').trim(); const jenis=normalizeJenis(String(row[16]||'').trim()); const masa=formatTime(row[22]); const jam=parseFloat(row[18])||0; const lain=String(row[19]||'').trim(); const balai=[2,4,6,8].map(i=>String(row[i]||'').trim()).find(v=>v)||'—'; const nama=[3,5,7,9].map(i=>String(row[i]||'').trim()).find(v=>v)||''; if(!daerah) return; if(!nama&&balai==='—') return; out.push({timestamp,daerah,balai,nama:nama||balai,bertugas,pejawatan,jantina,pangkat,jenis,jam,masa,tarikh,lain}); }); return out; }
-function normalizeJenis(j){ if(!j) return 'LAIN-LAIN TUGAS'; const u=j.toUpperCase().trim(); if(u.includes('SJR')) return 'SJR'; if(u.includes('MPV')) return 'MPV'; if(u.includes('PERTANYAAN')||u.includes('PEJABAT PERTANYAAN')) return 'PEJABAT PERTANYAAN'; if(u.includes('DCC')) return 'DCC'; if(u.includes('SENTRI')||u.includes('PROWLER')) return 'SENTRI / PROWLER'; if(u.includes('BIT')||u.includes('RONDAAN')) return 'BIT/RONDAAN'; if(u.includes('PENTADBIRAN')||u.includes('ADMIN')) return 'TUGAS PENTADBIRAN'; return 'LAIN-LAIN TUGAS'; }
+
+function formatTimestamp(raw){
+  if(!raw||raw==='') return '—';
+  const s = String(raw).trim();
+  if(s.includes('T')){
+    const d = new Date(s);
+    if(!isNaN(d.getTime())){
+      return new Intl.DateTimeFormat('ms-MY',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d);
+    }
+  }
+  return s;
+}
+
+function formatTime(val){
+  if(!val||val===''||val==='0') return '—';
+  const s=String(val).trim();
+  if(/^\d{1,2}:\d{2}/.test(s)){ const p=s.split(':'); return p[0].padStart(2,'0')+':'+p[1]; }
+  const match=s.match(/(\d{1,2}):(\d{2}):\d{2}/);
+  if(match) return match[1].padStart(2,'0')+':'+match[2];
+  if(s.includes('T')){
+    const d=new Date(s);
+    if(!isNaN(d.getTime())){
+      return new Intl.DateTimeFormat('ms-MY',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit'}).format(d);
+    }
+  }
+  const num=parseFloat(s);
+  if(!isNaN(num)&&num>0&&num<1){ const t=Math.round(num*24*60); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }
+  return s;
+}
+
+function expandRows(rows){
+  const out=[];
+  rows.forEach(row=>{
+    const timestamp=String(row[0]||'');
+    const daerah=normDaerah(row[1]);
+    const bertugas=[2,4,6,8].map(i=>String(row[i]||'').trim()).find(v=>v)||'—';
+    const pejawatan=String(row[12]||'').trim();
+    const jantina=String(row[13]||'').trim();
+    const pangkat=String(row[14]||'').trim();
+    let tarikh = String(row[15]||'').trim();
+    if(!tarikh && timestamp) tarikh = normaliseDate(timestamp);
+    const jenis=normalizeJenis(String(row[16]||'').trim());
+    const lain=String(row[19]||'').trim();
+    const masa=formatTime(row[22]);
+    const masaTamat=formatTime(row[23]||'');
+    const jam=parseFloat(row[18])||0;
+    const balai=String(row[10]||'').trim()||'—';
+    const nama=[3,5,7,9].map(i=>String(row[i]||'').trim()).find(v=>v)||'';
+    if(!daerah) return;
+    if(!nama&&balai==='—') return;
+    out.push({timestamp,daerah,balai,nama:nama||balai,bertugas,pejawatan,jantina,pangkat,jenis,jam,masa,masaTamat,tarikh,lain});
+  });
+  return out;
+}
+
+function normalizeJenis(j){
+  if(!j) return 'LAIN-LAIN TUGAS';
+  const u = j.toUpperCase().trim();
+  const checks = [
+    { keys:['SJR'],                             val:'SJR' },
+    { keys:['MPV'],                             val:'MPV' },
+    { keys:['PERTANYAAN','PEJABAT PERTANYAAN'], val:'PEJABAT PERTANYAAN' },
+    { keys:['DCC'],                             val:'DCC' },
+    { keys:['SENTRI','PROWLER'],                val:'SENTRI / PROWLER' },
+    { keys:['BIT','RONDAAN'],                   val:'BIT/RONDAAN' },
+    { keys:['PENTADBIRAN','ADMIN'],             val:'TUGAS PENTADBIRAN' },
+  ];
+  for(const c of checks){ if(c.keys.some(k=>u.includes(k))) return c.val; }
+  return 'LAIN-LAIN TUGAS';
+}
+
 function badgeClass(j){ if(!j)return''; const u=j.toUpperCase(); if(u.includes('LAIN'))return'badge-lain'; if(u.includes('PERTANYAAN')||u.includes('PEJABAT'))return'badge-pejabat'; if(u.includes('SJR'))return'badge-rci'; if(u.includes('MPV'))return'badge-rci'; if(u.includes('DCC'))return'badge-lain'; if(u.includes('SENTRI')||u.includes('PROWLER'))return'badge-pejabat'; if(u.includes('BIT')||u.includes('RONDAAN'))return'badge-apr'; if(u.includes('PENTADBIRAN'))return'badge-rci'; return'badge-apr'; }
 function isPeg(d){ const p=String(d.pejawatan||'').toUpperCase().trim(); const pangkat=String(d.pangkat||'').toUpperCase().trim(); if(p.includes('PEG')||p.includes('PEGAWAI')) return true; if(pangkat.includes('INSP')||pangkat.includes('DSP')||pangkat.includes('ASP')||pangkat.includes('SUPT')||pangkat.includes('DCP')||pangkat.includes('CP')||pangkat.includes('KPP')||pangkat.includes('KDSP')||pangkat.includes('ACP')) return true; return false; }
 function countBy(data,key){ const m={}; data.forEach(d=>{ const v=d[key]||'Lain'; m[v]=(m[v]||0)+1; }); return m; }
-function makeChart(id,type,labels,values,colors){ if(charts[id]) charts[id].destroy(); const el=document.getElementById(id); if(!el) return; charts[id]=new Chart(el.getContext('2d'),{type,data:{labels,datasets:[{data:values,backgroundColor:colors.slice(0,values.length),borderColor:colors.slice(0,values.length),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:type==='doughnut',position:'right',labels:{font:{family:'Inter',size:11},padding:10,usePointStyle:true}},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}},scales:type!=='doughnut'?{x:{grid:{display:false},ticks:{font:{family:'Inter',size:10},maxRotation:40}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Inter',size:10}}}}:{}}}); }
+
+function makeChart(id,type,labels,values,colors){
+  if(charts[id]) charts[id].destroy();
+  const el=document.getElementById(id); if(!el) return;
+  const assignedColors = values.map((_,i) => colors[i % colors.length]);
+  charts[id]=new Chart(el.getContext('2d'),{type,data:{labels,datasets:[{data:values,backgroundColor:assignedColors,borderColor:assignedColors,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:type==='doughnut',position:'right',labels:{font:{family:'Inter',size:11},padding:10,usePointStyle:true}},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}},scales:type!=='doughnut'?{x:{grid:{display:false},ticks:{font:{family:'Inter',size:11},maxRotation:40}},y:{grid:{color:'#f1f5f9'},ticks:{font:{family:'Inter',size:11}}}}:{}}});
+}
+
 function showAlert(type,msg){ const el=document.getElementById(type==='error'?'alertError':'alertInfo'); if(el){el.textContent=msg;el.style.display=msg?'block':'none';} }
 
-async function doLogin() {
-  const username = document.getElementById('loginUser').value.trim().toLowerCase();
-  const token = document.getElementById('loginToken').value;
-  const errEl = document.getElementById('loginError');
-  const loginBtn = document.getElementById('loginBtn');
-  const originalText = loginBtn.innerHTML;
-  
-  loginBtn.disabled = true;
-  loginBtn.innerHTML = '<span class="spinner">⚡</span> MEMUAT...';
-  errEl.style.display = 'none';
+// ── Unlock ───────────────────────────────────────────────────────
+
+function unlockAnggota(tabId){
+  const tid = tabId.toUpperCase();
+  const passwordInput    = document.getElementById(`anggotaPassword${tid}`);
+  const unlockError      = document.getElementById(`unlockError${tid}`);
+  const protectedContent = document.getElementById(`protectedAnggota${tid}`);
+  const unlockSection    = document.getElementById(`unlockSection${tid}`);
+
+  const correctPw = DISTRICT_PASSWORDS[tabId];
+  if(!correctPw){
+    unlockError.textContent = '❌ Kata laluan daerah belum dimuatkan. Cuba log masuk semula.';
+    unlockError.style.display='block';
+    passwordInput.value='';
+    return;
+  }
+
+  if(passwordInput.value === correctPw){
+    protectedContent.classList.add('visible');
+    unlockSection.style.display='none';
+    unlockError.style.display='none';
+    unlockedTabs[tabId]=true;
+    if(currentDateData.length>0){
+      const districtData=currentDateData.filter(r=>normDaerah(r.daerah)===DAERAH_MAP[tabId]);
+      renderDistrictTab(tabId,districtData,getSelectedDateFull());
+    }
+  } else {
+    unlockError.textContent='❌ Kata laluan salah';
+    unlockError.style.display='block';
+    passwordInput.value='';
+  }
+}
+
+// ── Auth ─────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded',function(){
+  const loginUser=document.getElementById('loginUser');
+  const loginToken=document.getElementById('loginToken');
+  function handleEnter(e){ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } }
+  loginUser.addEventListener('keypress',handleEnter);
+  loginToken.addEventListener('keypress',handleEnter);
+
+  let warmedOnFocus = false;
+  loginUser.addEventListener('focus',()=>{
+    if(!warmedOnFocus){
+      warmedOnFocus = true;
+      fetch(APPS_SCRIPT_URL+'?action=warmup&t='+Date.now()).catch(()=>{});
+    }
+  });
+});
+
+async function doLogin(){
+  const username=document.getElementById('loginUser').value.trim().toLowerCase();
+  const token=document.getElementById('loginToken').value;
+  const errEl=document.getElementById('loginError');
+  const loginBtn=document.getElementById('loginBtn');
+
+  loginBtn.disabled=true;
+  loginBtn.innerHTML='<span class="spinner"></span> Menyambung ke pelayan...';
+  errEl.style.display='none';
 
   try {
-    const url = `${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    loginBtn.innerHTML='<span class="spinner"></span> Menunggu pelayan...';
+    await warmupPromise;
+    loginBtn.innerHTML='<span class="spinner"></span> Mengesahkan...';
 
-    if (data.error) {
-      errEl.style.display = 'block';
-      document.getElementById('loginToken').value = '';
-      loginBtn.disabled = false;
-      loginBtn.innerHTML = originalText;
+    const url=`${APPS_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+    const response=await fetch(url);
+    const data=await response.json();
+
+    if(data.error){
+      errEl.style.display='block';
+      document.getElementById('loginToken').value='';
+      loginBtn.disabled=false;
+      loginBtn.innerHTML='LOG MASUK';
       return;
     }
 
-    currentUser = data;
-    currentToken = token;
-    sessionStorage.setItem('dashUser', JSON.stringify(currentUser));
-    sessionStorage.setItem('dashToken', token);
-
+    currentUser=data;
+    currentToken=token;
+    sessionStorage.setItem('dashUser',JSON.stringify(currentUser));
+    sessionStorage.setItem('dashToken',token);
     await saveLog('login');
+    await fetchDistrictPasswords();
     showDashboard();
-  } catch (e) {
-    errEl.style.display = 'block';
-    document.getElementById('loginToken').value = '';
-    loginBtn.disabled = false;
-    loginBtn.innerHTML = originalText;
+  } catch(e){
+    errEl.textContent='❌ Ralat rangkaian. Sila cuba lagi.';
+    errEl.style.display='block';
+    document.getElementById('loginToken').value='';
+    loginBtn.disabled=false;
+    loginBtn.innerHTML='LOG MASUK';
   }
 }
 
-async function saveLog(action) {
-  if (!currentUser || !currentToken) return;
-  const now = new Date();
-  const logData = {
-    action: action,
-    username: currentUser.username,
-    role: currentUser.role,
-    tab: currentUser.role === 'admin' ? 'Semua Tab' : (TAB_LABELS[currentUser.district] || ''),
-    loginDate: now.toLocaleDateString('ms-MY'),
-    loginTime: now.toLocaleTimeString('ms-MY'),
-    deviceInfo: navigator.userAgent
-  };
-  if (action === 'logout') {
-    logData.logoutTime = now.toLocaleTimeString('ms-MY');
+async function fetchDistrictPasswords(){
+  try {
+    const url=`${APPS_SCRIPT_URL}?action=getDistrictPasswords&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if(data.passwords){
+      DISTRICT_PASSWORDS = data.passwords;
+      sessionStorage.setItem('districtPasswords', JSON.stringify(DISTRICT_PASSWORDS));
+    }
+  } catch(e){
+    console.warn('Could not load district passwords:', e);
+    const cached = sessionStorage.getItem('districtPasswords');
+    if(cached) DISTRICT_PASSWORDS = JSON.parse(cached);
   }
-  const url = `${APPS_SCRIPT_URL}?action=saveLog&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&data=${encodeURIComponent(JSON.stringify(logData))}`;
-  try { await fetch(url); } catch (e) { /* silent */ }
 }
 
-function showDashboard() {
-  document.getElementById('loginPage').style.display = 'none';
-  document.getElementById('dashboardPage').style.display = 'block';
-  document.getElementById('userPillName').textContent = currentUser.username.toUpperCase();
-  document.getElementById('sheetUrl').value = APPS_SCRIPT_URL;
+async function saveLog(action){
+  if(!currentUser||!currentToken) return;
+  const now=new Date();
+  const _pad = n => String(n).padStart(2,'0');
+  const _dateStr = _pad(now.getDate())+'/'+_pad(now.getMonth()+1)+'/'+now.getFullYear();
+  const _timeStr = _pad(now.getHours())+':'+_pad(now.getMinutes())+':'+_pad(now.getSeconds());
+  const logData={action,username:currentUser.username,role:currentUser.role,tab:currentUser.role==='admin'?'Semua Tab':(TAB_LABELS[currentUser.district]||''),loginDate:_dateStr,loginTime:_timeStr};
+  if(action==='logout') logData.logoutTime=_timeStr;
+  const url=`${APPS_SCRIPT_URL}?action=saveLog&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&data=${encodeURIComponent(JSON.stringify(logData))}`;
+  try{ await fetch(url); }catch(e){}
+}
 
-  if (currentUser.role === 'admin') {
-    document.getElementById('urlBar').style.display = 'flex';
-    ['today','d1','d2','d3','d4'].forEach(t => document.getElementById('tab_btn_'+t).classList.remove('hidden'));
+function showDashboard(){
+  document.getElementById('loginPage').style.display='none';
+  document.getElementById('dashboardPage').style.display='block';
+  document.getElementById('userPillName').textContent=currentUser.username.toUpperCase();
+
+  ['today','d1','d2','d3','d4'].forEach(t=>document.getElementById('tab_btn_'+t).classList.add('hidden'));
+  document.getElementById('tab_btn_log').classList.add('hidden');
+  document.getElementById('tab_btn_carian').classList.add('hidden');
+
+  const district = (currentUser.district || '').trim();
+
+  if(isFullAdmin()){
+    ['today','d1','d2','d3','d4'].forEach(t=>document.getElementById('tab_btn_'+t).classList.remove('hidden'));
     document.getElementById('tab_btn_log').classList.remove('hidden');
+    document.getElementById('tab_btn_carian').classList.remove('hidden');
     switchTab('today');
   } else {
-    document.getElementById('urlBar').style.display = 'none';
-    ['today','d1','d2','d3','d4'].forEach(t => document.getElementById('tab_btn_'+t).classList.add('hidden'));
-    document.getElementById('tab_btn_' + currentUser.district).classList.remove('hidden');
-    document.getElementById('tab_btn_log').classList.add('hidden');
-    switchTab(currentUser.district);
+    const allowed = district.split('/').map(d=>d.trim().toLowerCase()).filter(d=>['d1','d2','d3','d4'].includes(d));
+    if(allowed.length > 0){
+      allowed.forEach(d=>document.getElementById('tab_btn_'+d).classList.remove('hidden'));
+      if(allowed.length > 1) document.getElementById('tab_btn_today').classList.remove('hidden');
+      document.getElementById('tab_btn_carian').classList.remove('hidden');
+      switchTab(allowed[0]);
+    } else {
+      document.getElementById('tab_btn_today').classList.remove('hidden');
+      switchTab('today');
+    }
   }
-  
+
+  startIdleDetection(); // ← start idle timer
+  startSessionPing();   // ← start server-side session ping
   loadData();
 }
 
-async function doLogout() {
+async function doLogout(){
+  stopIdleDetection();  // ← stop idle timer
+  stopSessionPing();    // ← stop ping
   await saveLog('logout');
   sessionStorage.removeItem('dashUser');
   sessionStorage.removeItem('dashToken');
-  currentUser = null;
-  currentToken = null;
-  document.getElementById('loginPage').style.display = 'flex';
-  document.getElementById('dashboardPage').style.display = 'none';
-  document.getElementById('loginUser').value = '';
-  document.getElementById('loginToken').value = '';
+  currentUser=null; currentToken=null;
+  document.getElementById('loginPage').style.display='flex';
+  document.getElementById('dashboardPage').style.display='none';
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginToken').value='';
 }
 
-async function loadData() {
-  if (!currentUser || !currentToken) return;
-  const dateParam = getSelectedDateStr();
-  const url = `${APPS_SCRIPT_URL}?action=getData&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&date=${encodeURIComponent(dateParam)}`;
-  showAlert('info', '⏳ Memuatkan data...');
+// ── Data loading ─────────────────────────────────────────────────
+
+async function loadData(){
+  if(!currentUser||!currentToken) return;
+  const dateParam=getSelectedDateStr();
+  const url=`${APPS_SCRIPT_URL}?action=getData&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&date=${encodeURIComponent(dateParam)}`;
+  showAlert('info','⏳ Memuatkan data...');
   try {
-    const response = await fetch(url);
-    const json = await response.json();
-    if (json.error) {
-      showAlert('error', '❌ ' + json.error);
-      showAlert('info', '');
-      return;
-    }
-    if (!json.rows) {
-      showAlert('error', '❌ Data tidak ditemui.');
-      showAlert('info', '');
-      return;
-    }
-    allData = expandRows(json.rows);
-    
-    // Filter for selected date only
-    const selStr = getSelectedDateStr();
-    currentDateData = allData.filter(r => normaliseDate(r.tarikh) === selStr);
-    
-    if (!currentDateData.length) {
-      showAlert('error', '❌ Tiada data untuk tarikh ini.');
+    const response=await fetch(url);
+    const json=await response.json();
+    if(json.error){ showAlert('error','❌ '+json.error); showAlert('info',''); return; }
+    if(!json.rows){ showAlert('error','❌ Data tidak ditemui.'); showAlert('info',''); return; }
+    allData=expandRows(json.rows);
+    const selStr=getSelectedDateStr();
+    currentDateData=allData.filter(r=>normaliseDate(r.tarikh)===selStr);
+    if(!currentDateData.length){
+      showAlert('error','❌ Tiada data untuk tarikh ini.');
     } else {
-      showAlert('info', '');
-      showAlert('error', '');
-      const now = new Date().toLocaleTimeString('ms-MY');
-      document.getElementById('liveText').textContent = 'Dikemaskini ' + now;
-      document.getElementById('footerRefresh').textContent = 'Terakhir dikemaskini: ' + now;
+      showAlert('info',''); showAlert('error','');
+      const now=new Date().toLocaleTimeString('ms-MY');
+      document.getElementById('liveText').textContent='Dikemaskini '+now;
+      document.getElementById('footerRefresh').textContent='Terakhir dikemaskini: '+now;
       renderAll();
       startCountdown();
     }
-  } catch (e) {
-    showAlert('error', '❌ Ralat rangkaian. Cuba lagi.');
-    showAlert('info', '');
+  } catch(e){
+    showAlert('error','❌ Ralat rangkaian. Cuba lagi.');
+    showAlert('info','');
   }
 }
 
-async function renderLogTab() {
-  if (!currentUser || currentUser.role !== 'admin') return;
-  const url = `${APPS_SCRIPT_URL}?action=getLogs&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}`;
+// ── Log tab ──────────────────────────────────────────────────────
+
+async function renderLogTab(){
+  if(!isFullAdmin()) return;
+  const url=`${APPS_SCRIPT_URL}?action=getLogs&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}`;
   try {
-    const response = await fetch(url);
-    const data = await response.json();
-    const logs = data.logs || [];
-    document.getElementById('log_count').textContent = logs.length;
-    document.getElementById('log_k1').textContent = logs.length;
-    document.getElementById('log_k2').textContent = logs.filter(l => l.loginDate === new Date().toLocaleDateString('ms-MY')).length;
-    document.getElementById('log_k3').textContent = new Set(logs.map(l => l.username)).size;
-    document.getElementById('log_k4').textContent = logs.filter(l => l.role === 'admin').length;
-    const tbody = document.getElementById('log_table');
-    if (!logs.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted);">Tiada rekod log</td></tr>';
-      return;
-    }
-    tbody.innerHTML = logs.map((l,i)=>`<tr><td style="color:var(--muted);font-size:11px;">${i+1}</td><td><strong>${l.username}</strong></td><td><span class="badge ${l.role==='admin'?'badge-rci':'badge-apr'}">${l.role==='admin'?'Admin':'Daerah'}</span></td><td style="font-size:12px;">${l.tab}</td><td style="font-size:12px;">${l.loginDate}</td><td><strong>${l.loginTime}</strong></td><td style="font-size:12px;">${l.logoutTime}</td><td style="font-size:12px;color:var(--muted);">${l.deviceInfo}</td></tr>`).join('');
-  } catch (e) {
-    document.getElementById('log_table').innerHTML = '<tr><td colspan="8" class="loading">Gagal memuat log</td></tr>';
+    const response=await fetch(url);
+    const data=await response.json();
+    const logs=data.logs||[];
+    document.getElementById('log_count').textContent=logs.length;
+    document.getElementById('log_k1').textContent=logs.length;
+    const _n=new Date(),_td=String(_n.getDate()).padStart(2,'0')+'/'+String(_n.getMonth()+1).padStart(2,'0')+'/'+_n.getFullYear();
+    document.getElementById('log_k2').textContent=logs.filter(l=>l.loginDate===_td).length;
+    document.getElementById('log_k3').textContent=new Set(logs.map(l=>l.username)).size;
+    document.getElementById('log_k4').textContent=logs.filter(l=>l.role==='admin').length;
+    const tbody=document.getElementById('log_table');
+    if(!logs.length){ tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted);">Tiada rekod log</td></tr>'; return; }
+    const _extractTime = t => {
+      if(!t||t==='—') return '—';
+      const m = String(t).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      return m ? m[1] : t;
+    };
+    tbody.innerHTML=logs.map((l,i)=>`<tr>
+      <td style="color:var(--muted);">${i+1}</td>
+      <td><strong>${l.username}</strong></td>
+      <td><span class="badge ${l.role==='admin'?'badge-rci':'badge-apr'}">${l.role==='admin'?'Admin':'Daerah'}</span></td>
+      <td>${l.tab}</td>
+      <td>${l.loginDate}</td>
+      <td><strong>${_extractTime(l.loginTime)}</strong></td>
+      <td>${_extractTime(l.logoutTime||'—')}</td>
+    </tr>`).join('');
+  } catch(e){
+    document.getElementById('log_table').innerHTML='<tr><td colspan="7" class="loading">Gagal memuat log</td></tr>';
   }
 }
 
-function clearLog() {
-  if (!confirm('Padam semua rekod log masuk?')) return;
-  alert('Fungsi padam log belum diaktifkan di pelayan.');
+// ── Tab switching ────────────────────────────────────────────────
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>{ const id=t.id.replace('tab_btn_',''); t.classList.toggle('active',id===name); });
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  const tc=document.getElementById('tab-'+name); if(tc) tc.classList.add('active');
+  if(name==='log') renderLogTab();
+  if(name==='carian') initCarian();
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => { const id = t.id.replace('tab_btn_',''); t.classList.toggle('active', id === name); });
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  const tc = document.getElementById('tab-'+name); if (tc) tc.classList.add('active');
-  if (name === 'log') renderLogTab();
-}
+// ── Date helpers ─────────────────────────────────────────────────
 
-function getSelectedDateStr() {
-  const picker = document.getElementById('todayDatePicker');
-  if (picker && picker.value) {
-    const p = picker.value.split('-');
-    return parseInt(p[2]) + '/' + parseInt(p[1]) + '/' + p[0];
-  }
+function getSelectedDateStr(){
+  const picker=document.getElementById('todayDatePicker');
+  if(picker&&picker.value){ const p=picker.value.split('-'); return parseInt(p[2])+'/'+parseInt(p[1])+'/'+p[0]; }
   return getTodayStr();
 }
 
-function getSelectedDateFull() {
-  const picker = document.getElementById('todayDatePicker');
-  if (picker && picker.value) {
-    const p = picker.value.split('-');
-    const d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
-    const days = ['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'];
-    const months = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
-    return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+function getSelectedDateFull(){
+  const picker=document.getElementById('todayDatePicker');
+  if(picker&&picker.value){
+    const p=picker.value.split('-');
+    const d=new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2]));
+    const days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'];
+    const months=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+    return days[d.getDay()]+', '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
   }
   return getTodayFull();
 }
 
-function onDatePickerChange() {
-  if (!allData.length) return;
-  const selStr = getSelectedDateStr();
-  const selFull = getSelectedDateFull();
-  
-  // Update current date data
-  currentDateData = allData.filter(r => normaliseDate(r.tarikh) === selStr);
-  
-  // Update all tabs with new date data
-  renderSemuaDaerahTab(currentDateData, selFull);
-  
-  ['d1','d2','d3','d4'].forEach(key => {
-    const districtData = currentDateData.filter(r => normDaerah(r.daerah) === DAERAH_MAP[key]);
-    renderDistrictTab(key, districtData, selFull);
+function onDatePickerChange(){
+  if(!allData.length) return;
+  const selStr=getSelectedDateStr();
+  const selFull=getSelectedDateFull();
+  currentDateData=allData.filter(r=>normaliseDate(r.tarikh)===selStr);
+  renderSemuaDaerahTab(currentDateData,selFull);
+  ['d1','d2','d3','d4'].forEach(key=>{
+    const districtData=currentDateData.filter(r=>normDaerah(r.daerah)===DAERAH_MAP[key]);
+    renderDistrictTab(key,districtData,selFull);
   });
 }
 
-function renderAll() {
-  const picker = document.getElementById('todayDatePicker');
-  if (picker && !picker.value) {
-    const n = new Date();
-    picker.value = n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+function renderAll(){
+  const picker=document.getElementById('todayDatePicker');
+  if(picker&&!picker.value){
+    const n=new Date();
+    picker.value=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
   }
   onDatePickerChange();
 }
 
-function renderSemuaDaerahTab(data, dateStr) {
-  document.getElementById('today_title').textContent = dateStr;
-  document.getElementById('today_count').textContent = data.length;
-  
-  const totalJam = data.reduce((s, d) => s + (d.jam || 0), 0);
-  document.getElementById('today_k1').textContent = data.length;
-  document.getElementById('today_k2').textContent = new Set(data.map(d => d.daerah).filter(Boolean)).size;
-  document.getElementById('today_k3').textContent = totalJam;
-  document.getElementById('today_k4').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
-  document.getElementById('today_k5').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
-  document.getElementById('today_b1').textContent = data.length + ' rekod';
-  document.getElementById('today_tb').textContent = data.length + ' anggota';
+// ── Render: Semua Daerah ─────────────────────────────────────────
 
-  const byDaerah = countBy(data, 'daerah');
-  makeChart('today_c1', 'bar', Object.keys(byDaerah), Object.values(byDaerah), COLORS);
-  
-  renderPenugasanCard('today_pngs_card', data, dateStr, true);
+function renderSemuaDaerahTab(data,dateStr){
+  document.getElementById('today_title').textContent=dateStr;
+  document.getElementById('today_count').textContent=data.length;
+  const totalJam=data.reduce((s,d)=>s+(d.jam||0),0);
+  document.getElementById('today_k1').textContent=data.length;
+  document.getElementById('today_k2').textContent=new Set(data.map(d=>d.daerah).filter(Boolean)).size;
+  document.getElementById('today_k3').textContent=totalJam;
+  document.getElementById('today_k4').textContent=new Set(data.map(d=>d.bertugas).filter(Boolean)).size;
+  document.getElementById('today_k5').textContent=new Set(data.map(d=>d.jenis).filter(Boolean)).size;
+  document.getElementById('today_b1').textContent=data.length+' rekod';
+  document.getElementById('today_tb').textContent=data.length+' anggota';
+  const byDaerah=countBy(data,'daerah');
+  makeChart('today_c1','bar',Object.keys(byDaerah),Object.values(byDaerah),COLORS);
+  renderPenugasanCard('today_pngs_card',data,dateStr,true);
 
-  const tbody = document.getElementById('today_table');
-  if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
-    return;
-  }
-
-  const groupedByDistrict = {};
-  data.forEach(item => {
-    const district = item.daerah || 'LAIN';
-    if (!groupedByDistrict[district]) {
-      groupedByDistrict[district] = [];
-    }
-    groupedByDistrict[district].push(item);
+  const DISTRICT_CHART_MAP = [
+    { daerah:'MELAKA TENGAH', chartId:'today_c_d1', badgeId:'today_d1_badge' },
+    { daerah:'JASIN',         chartId:'today_c_d2', badgeId:'today_d2_badge' },
+    { daerah:'ALOR GAJAH',    chartId:'today_c_d3', badgeId:'today_d3_badge' },
+    { daerah:'IPK SSPDRM',    chartId:'today_c_d4', badgeId:'today_d4_badge' },
+  ];
+  DISTRICT_CHART_MAP.forEach(({daerah,chartId,badgeId}) => {
+    const distData = data.filter(d => normDaerah(d.daerah) === daerah);
+    const byB = countBy(distData,'bertugas');
+    const badge = document.getElementById(badgeId);
+    if(badge) badge.textContent = distData.length + ' anggota';
+    makeChart(chartId,'bar',
+      Object.keys(byB).map(l=>l.replace('BALAI POLIS ','')),
+      Object.values(byB),
+      COLORS
+    );
   });
 
-  let html = '';
-  let globalCounter = 1;
-  const sortedDistricts = Object.keys(groupedByDistrict).sort();
-
-  sortedDistricts.forEach(district => {
-    html += `<tr class="district-header"><td colspan="9"><strong>📍 ${district}</strong> (${groupedByDistrict[district].length} anggota)</td></tr>`;
-    groupedByDistrict[district].forEach(r => {
-      html += `<tr>
-        <td style="color:var(--muted);font-size:11px;">${globalCounter++}</td>
-        <td style="font-size:11px;">${r.timestamp ? new Date(r.timestamp).toLocaleString('ms-MY') : '—'}</td>
+  const tbody=document.getElementById('today_table');
+  if(!data.length){
+    tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
+    return;
+  }
+  const groupedByDistrict={};
+  data.forEach(item=>{ const district=item.daerah||'LAIN'; if(!groupedByDistrict[district]) groupedByDistrict[district]=[]; groupedByDistrict[district].push(item); });
+  let html='';
+  let globalCounter=1;
+  Object.keys(groupedByDistrict).sort().forEach(district=>{
+    html+=`<tr class="district-header"><td colspan="10"><strong>📍 ${district}</strong> (${groupedByDistrict[district].length} anggota)</td></tr>`;
+    groupedByDistrict[district].forEach(r=>{
+      html+=`<tr>
+        <td>${globalCounter++}</td>
+        <td style="font-size:11px;">${formatTimestamp(r.timestamp)}</td>
         <td><strong style="color:var(--navy)">${r.daerah}</strong></td>
         <td><strong>${r.nama}</strong></td>
-        <td style="font-size:12px;">${r.balai.replace('BALAI POLIS ', '')}</td>
-        <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
-        <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
-        <td><strong>${r.jam || '—'}</strong></td>
-        <td>${r.masa || '—'}</td>
+        <td>${r.balai.replace('BALAI POLIS ','')}</td>
+        <td>${r.bertugas.replace('BALAI POLIS ','')}</td>
+        <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis||'—'}</span></td>
+        <td style="max-width:200px;word-break:break-word;">${r.lain||'—'}</td>
+        <td style="text-align:center;font-weight:600;">${r.jam||'—'}</td>
+        <td style="text-align:center;">${r.masa||'—'}</td>
       </tr>`;
     });
   });
-
-  tbody.innerHTML = html;
-  renderSummaryTable('today_table', data);
+  tbody.innerHTML=html;
+  renderSummaryTable('today_table',data);
 }
 
-function renderDistrictTab(key, data, dateStr) {
-  const pre = key + '_';
+// ── Render: District tab ─────────────────────────────────────────
 
-  document.getElementById(pre + 'sub').textContent = dateStr;
-  document.getElementById(pre + 'count').textContent = data.length;
-  
-  const totalJam = data.reduce((s, d) => s + (d.jam || 0), 0);
-  document.getElementById(pre + 'k1').textContent = data.length;
-  document.getElementById(pre + 'k2').textContent = totalJam;
-  document.getElementById(pre + 'k3').textContent = new Set(data.map(d => d.balai).filter(Boolean)).size;
-  document.getElementById(pre + 'k4').textContent = new Set(data.map(d => d.jenis).filter(Boolean)).size;
-  document.getElementById(pre + 'tb').textContent = data.length + ' anggota';
-
-  const byBalai = countBy(data, 'balai');
-  makeChart(pre + 'c1', 'bar', Object.keys(byBalai).map(l => l.replace('BALAI POLIS ', '')), Object.values(byBalai), COLORS);
-  
-  renderPenugasanCard(key + '_pngs_card', data, dateStr, false);
-
-  if (unlockedTabs[key]) {
-    const tbody = document.getElementById(pre + 'table');
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
+function renderDistrictTab(key,data,dateStr){
+  const pre=key+'_';
+  document.getElementById(pre+'sub').textContent=dateStr;
+  document.getElementById(pre+'count').textContent=data.length;
+  const totalJam=data.reduce((s,d)=>s+(d.jam||0),0);
+  document.getElementById(pre+'k1').textContent=data.length;
+  document.getElementById(pre+'k2').textContent=totalJam;
+  document.getElementById(pre+'k3').textContent=new Set(data.map(d=>d.bertugas).filter(Boolean)).size;
+  document.getElementById(pre+'k4').textContent=new Set(data.map(d=>d.jenis).filter(Boolean)).size;
+  document.getElementById(pre+'tb').textContent=data.length+' anggota';
+  const byBalai=countBy(data,'bertugas');
+  makeChart(pre+'c1','bar',Object.keys(byBalai).map(l=>l.replace('BALAI POLIS ','')),Object.values(byBalai),COLORS);
+  renderPenugasanCard(key+'_pngs_card',data,dateStr,false);
+  if(unlockedTabs[key]){
+    const tbody=document.getElementById(pre+'table');
+    if(!data.length){
+      tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tiada rekod penugasan untuk tarikh ini</div></div></td></tr>';
       return;
     }
-    
-    tbody.innerHTML = data.map((r, i) => `<tr>
-      <td style="color:var(--muted);font-size:11px;">${i+1}</td>
-      <td style="font-size:12px;">${r.pangkat || '—'}</td>
+    tbody.innerHTML=data.map((r,i)=>`<tr>
+      <td>${i+1}</td>
+      <td>${r.pangkat||'—'}</td>
       <td><strong>${r.nama}</strong></td>
-      <td style="font-size:12px;">${r.bertugas.replace('BALAI POLIS ', '')}</td>
-      <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis || '—'}</span></td>
-      <td><strong>${r.jam || '—'}</strong></td>
-      <td>${r.masa || '—'}</td>
-      <td>${r.jantina || '—'}</td>
-      <td>${r.pejawatan || '—'}</td>
+      <td>${r.bertugas.replace('BALAI POLIS ','')}</td>
+      <td><span class="badge ${badgeClass(r.jenis)}">${r.jenis||'—'}</span></td>
+      <td style="max-width:200px;word-break:break-word;">${r.lain||'—'}</td>
+      <td style="text-align:center;font-weight:600;">${r.jam||'—'}</td>
+      <td style="text-align:center;">${r.masa||'—'}</td>
+      <td>${r.jantina||'—'}</td>
+      <td>${r.pejawatan||'—'}</td>
     </tr>`).join('');
   }
 }
 
-function renderPenugasanCard(cardId, data, dateStr, isAll) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
+// ── Render: Penugasan card ────────────────────────────────────────
 
-  const JENIS_ORDER = ['SJR', 'MPV', 'PEJABAT PERTANYAAN', 'DCC', 'SENTRI / PROWLER', 'BIT/RONDAAN', 'TUGAS PENTADBIRAN', 'LAIN-LAIN TUGAS'];
-  const counts = {};
-  JENIS_ORDER.forEach(j => { counts[j] = { peg: 0, apr: 0 }; });
+function renderPenugasanCard(cardId, data, dateStr, isAll){
+  const card=document.getElementById(cardId); if(!card) return;
+  const JENIS_ORDER=['SJR','MPV','PEJABAT PERTANYAAN','DCC','SENTRI / PROWLER','BIT/RONDAAN','TUGAS PENTADBIRAN','LAIN-LAIN TUGAS'];
+  const counts={};
+  JENIS_ORDER.forEach(j=>{ counts[j]={peg:0,apr:0}; });
+  data.forEach(d=>{ const j=d.jenis||'LAIN-LAIN TUGAS'; if(!counts[j]) counts[j]={peg:0,apr:0}; if(isPeg(d)) counts[j].peg++; else counts[j].apr++; });
+  let totalPeg=0,totalApr=0;
+  JENIS_ORDER.forEach(j=>{ totalPeg+=counts[j].peg; totalApr+=counts[j].apr; });
+  if(!dateStr){ const now=new Date(); const days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu']; const months=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember']; dateStr=days[now.getDay()]+', '+now.getDate()+' '+months[now.getMonth()]+' '+now.getFullYear(); }
+  const cardTitle=isAll?'JUMLAH PENUGASAN HARIAN':'PENUGASAN HARIAN';
 
-  data.forEach(d => {
-    const j = d.jenis || 'LAIN-LAIN TUGAS';
-    if (!counts[j]) counts[j] = { peg: 0, apr: 0 };
-    if (isPeg(d)) counts[j].peg++;
-    else counts[j].apr++;
+  const S={
+    hdr:  'padding:14px 16px 10px;background:linear-gradient(135deg,var(--navy-dark),var(--navy-mid));',
+    ttl:  'font-family:Rajdhani,sans-serif;font-size:17px;font-weight:700;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;',
+    sub:  'font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;',
+    tbl:  'width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;',
+    thP:  'padding:10px 14px;text-align:left;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:#c8c8c8;color:#333;',
+    thPEG:'padding:10px 0;width:10px;text-align:center;font-size:12px;font-weight:700;background:#f4a261;color:#fff;',
+    thAPR:'padding:10px 0;width:10px;text-align:center;font-size:12px;font-weight:700;background:#4a90d9;color:#fff;',
+    tdP:  'padding:7px 14px;background:#fffde8;font-size:13px;font-weight:600;color:#333;text-align:left;border-bottom:1px solid #e8e8c8;',
+    tdN:  'padding:7px 0;width:10px;text-align:center;font-weight:700;color:#444;background:#fffde8;border-bottom:1px solid #e8e8c8;',
+    totP: 'padding:10px 14px;background:#d0d0d0;font-weight:700;font-size:13px;color:#222;text-align:left;',
+    totPEG:'padding:10px 0;width:10px;text-align:center;font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;background:#f4a261;color:#fff;',
+    totAPR:'padding:10px 0;width:10px;text-align:center;font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;background:#4a90d9;color:#fff;',
+  };
+
+  let rows='';
+  JENIS_ORDER.forEach(j=>{
+    rows+=`<tr>
+      <td style="${S.tdP}">${j}</td>
+      <td style="${S.tdN}">${counts[j].peg}</td>
+      <td style="${S.tdN}">${counts[j].apr}</td>
+    </tr>`;
   });
 
-  let totalPeg = 0, totalApr = 0;
-  JENIS_ORDER.forEach(j => { totalPeg += counts[j].peg; totalApr += counts[j].apr; });
-
-  let rows = '';
-  JENIS_ORDER.forEach(j => {
-    rows += `<tr><td style="padding:7px 14px;background:#fffde8;font-size:13px;font-weight:600;color:#333;border-bottom:1px solid #e8e8c8;">${j}</td><td style="padding:7px 14px;background:#fffde8;text-align:center;font-weight:600;border-bottom:1px solid #e8e8c8;">${counts[j].peg}</td><td style="padding:7px 14px;background:#fffde8;text-align:center;font-weight:600;border-bottom:1px solid #e8e8c8;">${counts[j].apr}</td></tr>`;
-  });
-
-  const cardTitle = isAll ? '📋 Jumlah Penugasan Harian Daerah-Daerah melaka' : '📋 Penugasan Harian';
-
-  card.innerHTML = `
-    <div style="padding:14px 16px 10px;background:linear-gradient(135deg,var(--navy-dark),var(--navy-mid));border-radius:0;">
-      <div style="font-family:'Rajdhani',sans-serif;font-size:17px;font-weight:700;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;">${cardTitle}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;">${dateStr}</div>
+  card.innerHTML=`
+    <div style="${S.hdr}">
+      <div style="${S.ttl}">📋 ${cardTitle}</div>
+      <div style="${S.sub}">${dateStr}</div>
     </div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead><tr>
-      <th style="padding:11px 14px;background:#c8c8c8;text-align:left;font-size:12px;font-weight:700;color:#333;letter-spacing:.05em;text-transform:uppercase;">PENUGASAN</th>
-      <th style="padding:11px 14px;background:#f4a261;text-align:center;font-size:12px;font-weight:700;color:white;letter-spacing:.05em;min-width:60px;">PEG</th>
-      <th style="padding:11px 14px;background:#4a90d9;text-align:center;font-size:12px;font-weight:700;color:white;letter-spacing:.05em;min-width:60px;">APR</th>
-    </tr></thead>
-    <tbody>${rows}
-      <tr>
-        <td style="padding:10px 14px;background:#d0d0d0;font-weight:700;font-size:13px;color:#222;">JUMLAH KESELURUHAN</td>
-        <td style="padding:10px 14px;background:#f4a261;text-align:center;font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;color:white;">${totalPeg}</td>
-        <td style="padding:10px 14px;background:#4a90d9;text-align:center;font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;color:white;">${totalApr}</td>
-      </tr>
-    </tbody>
-  </table>`;
+    <table style="${S.tbl}">
+      <colgroup><col style="width:auto"><col style="width:10px"><col style="width:10px"></colgroup>
+      <thead><tr>
+        <th style="${S.thP}">PENUGASAN</th>
+        <th style="${S.thPEG}">PEG</th>
+        <th style="${S.thAPR}">APR</th>
+      </tr></thead>
+      <tbody>
+        ${rows}
+        <tr>
+          <td style="${S.totP}">JUMLAH KESELURUHAN</td>
+          <td style="${S.totPEG}">${totalPeg}</td>
+          <td style="${S.totAPR}">${totalApr}</td>
+        </tr>
+      </tbody>
+    </table>`;
 }
 
-function renderSummaryTable(containerId, data) {
-  const existing = document.getElementById('summary_' + containerId);
-  if (existing) existing.remove();
-  if (!data.length) return;
+// ── Render: Summary table ─────────────────────────────────────────
 
-  const JENIS_ORDER = ['SJR', 'MPV', 'PEJABAT PERTANYAAN', 'DCC', 'SENTRI / PROWLER', 'BIT/RONDAAN', 'TUGAS PENTADBIRAN', 'LAIN-LAIN TUGAS'];
-  const map = {};
-  data.forEach(d => {
-    const balai = d.balai || '—';
-    const jenis = d.jenis || 'LAIN-LAIN TUGAS';
-    const key = balai + '|||' + jenis;
-    map[key] = (map[key] || 0) + 1;
-  });
-
-  const rows = Object.entries(map).map(([k, v]) => {
-    const [b, j] = k.split('|||');
-    return { balai: b, jenis: j, count: v };
-  });
-
-  rows.sort((a, b) => a.balai.localeCompare(b.balai) || a.jenis.localeCompare(b.jenis));
-
-  const byBalai = {};
-  rows.forEach(r => {
-    if (!byBalai[r.balai]) byBalai[r.balai] = [];
-    byBalai[r.balai].push(r);
-  });
-
-  let html = `<div id="summary_${containerId}" class="table-wrap" style="margin-bottom:18px;"><div class="card-header" style="padding:16px 20px 0;"><div class="card-title">📊 Ringkasan Penugasan Mengikut Balai &amp; Jenis Tugas</div><div class="card-badge">${data.length} anggota</div></div><div style="overflow-x:auto;margin-top:12px;"><table><thead><tr><th>BALAI</th><th>TUGAS</th><th style="text-align:center;">BILANGAN ANGGOTA</th></tr></thead><tbody>`;
-
-  let grand = 0;
-  Object.keys(byBalai).sort().forEach(balai => {
-    const entries = byBalai[balai];
-    entries.sort((a, b) => {
-      const ia = JENIS_ORDER.indexOf(a.jenis), ib = JENIS_ORDER.indexOf(b.jenis);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+function renderSummaryTable(containerId,data){
+  const existing=document.getElementById('summary_'+containerId); if(existing) existing.remove();
+  if(!data.length) return;
+  const JENIS_ORDER=['SJR','MPV','PEJABAT PERTANYAAN','DCC','SENTRI / PROWLER','BIT/RONDAAN','TUGAS PENTADBIRAN','LAIN-LAIN TUGAS'];
+  const map={};
+  data.forEach(d=>{ const balai=d.bertugas||'—'; const jenis=d.jenis||'LAIN-LAIN TUGAS'; const key=balai+'|||'+jenis; map[key]=(map[key]||0)+1; });
+  const rows=Object.entries(map).map(([k,v])=>{ const [b,j]=k.split('|||'); return{balai:b,jenis:j,count:v}; });
+  rows.sort((a,b)=>a.balai.localeCompare(b.balai)||a.jenis.localeCompare(b.jenis));
+  const byBalai={};
+  rows.forEach(r=>{ if(!byBalai[r.balai]) byBalai[r.balai]=[]; byBalai[r.balai].push(r); });
+  let html=`<div id="summary_${containerId}" class="table-wrap" style="margin-bottom:18px;">
+    <div class="card-header" style="padding:16px 20px 0;">
+      <div class="card-title">📊 Ringkasan Penugasan Mengikut Balai &amp; Jenis Tugas</div>
+      <div class="card-badge">${data.length} anggota</div>
+    </div>
+    <div style="overflow-x:auto;margin-top:12px;">
+    <table>
+      <thead><tr>
+        <th>BALAI</th>
+        <th>TUGAS</th>
+        <th style="text-align:center;min-width:100px;">BILANGAN</th>
+      </tr></thead>
+      <tbody>`;
+  let grand=0;
+  Object.keys(byBalai).sort().forEach(balai=>{
+    const entries=byBalai[balai];
+    entries.sort((a,b)=>{ const ia=JENIS_ORDER.indexOf(a.jenis),ib=JENIS_ORDER.indexOf(b.jenis); return(ia<0?99:ia)-(ib<0?99:ib); });
+    const tot=entries.reduce((s,e)=>s+e.count,0); grand+=tot;
+    entries.forEach((e,idx)=>{
+      html+=`<tr>
+        ${idx===0?`<td rowspan="${entries.length}" style="font-weight:700;color:var(--navy);vertical-align:middle;background:#f8fafc;">${balai.replace('BALAI POLIS ','BP ')}</td>`:''}
+        <td><span class="badge ${badgeClass(e.jenis)}">${e.jenis}</span></td>
+        <td style="text-align:center;font-weight:600;">${e.count}</td>
+      </tr>`;
     });
-    const tot = entries.reduce((s, e) => s + e.count, 0);
-    grand += tot;
-
-    entries.forEach((e, idx) => {
-      html += `<tr>${idx === 0 ? `<td rowspan="${entries.length}" style="font-weight:700;color:var(--navy);vertical-align:middle;background:#f8fafc;">${balai.replace('BALAI POLIS ', 'BP ')}</td>` : ''}<td><span class="badge ${badgeClass(e.jenis)}">${e.jenis}</span></td><td style="text-align:center;font-weight:600;">${e.count}</td></tr>`;
-    });
-    html += `<tr style="background:#f1f5f9;"><td colspan="2" style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Jumlah — ${balai.replace('BALAI POLIS ', 'BP ')}</td><td style="text-align:center;color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;">${tot}</td></tr>`;
+    html+=`<tr style="background:#f1f5f9;">
+      <td colspan="2" style="color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Jumlah — ${balai.replace('BALAI POLIS ','BP ')}</td>
+      <td style="text-align:center;color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;">${tot}</td>
+    </tr>`;
   });
-
-  html += `<tr style="background:var(--navy);"><td colspan="2" style="font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--gold);">JUMLAH KESELURUHAN</td><td style="text-align:center;font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--gold);">${grand}</td></tr>`;
-  html += `</tbody></table></div></div>`;
-
-  const container = document.getElementById(containerId);
-  if (container) container.insertAdjacentHTML('afterend', html);
+  html+=`<tr style="background:var(--navy);">
+    <td colspan="2" style="font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--gold);">JUMLAH KESELURUHAN</td>
+    <td style="text-align:center;font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--gold);">${grand}</td>
+  </tr>`;
+  html+=`</tbody></table></div></div>`;
+  const container=document.getElementById(containerId); if(container) container.insertAdjacentHTML('afterend',html);
 }
 
-function startCountdown() {
+// ── Countdown / clock ────────────────────────────────────────────
+
+function startCountdown(){
   clearInterval(countdownTimer);
-  countdownSec = 300;
-  countdownTimer = setInterval(() => {
+  countdownSec=300;
+  countdownTimer=setInterval(()=>{
     countdownSec--;
-    if (countdownSec <= 0) {
-      loadData();
-      return;
-    }
-    const m = Math.floor(countdownSec / 60), s = countdownSec % 60;
-    const el = document.getElementById('nextRefresh');
-    if (el) el.textContent = 'Auto-refresh dalam ' + m + 'm ' + (s < 10 ? '0' + s : s) + 's';
-  }, 1000);
+    if(countdownSec<=0){ loadData(); return; }
+    const m=Math.floor(countdownSec/60), s=countdownSec%60;
+    const el=document.getElementById('nextRefresh');
+    if(el) el.textContent='Auto-refresh dalam '+m+'m '+(s<10?'0'+s:s)+'s';
+  },1000);
 }
 
-function updateClock() {
-  const now = new Date();
-  const days = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
-  const months = ['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogs', 'Sep', 'Okt', 'Nov', 'Dis'];
-  document.getElementById('headerDate').textContent = days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
-  document.getElementById('headerTime').textContent = now.toLocaleTimeString('ms-MY');
+function updateClock(){
+  const now=new Date();
+  const days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'];
+  const months=['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogs','Sep','Okt','Nov','Dis'];
+  const hd=document.getElementById('headerDate'); if(hd) hd.textContent=days[now.getDay()]+', '+now.getDate()+' '+months[now.getMonth()]+' '+now.getFullYear();
+  const ht=document.getElementById('headerTime'); if(ht) ht.textContent=now.toLocaleTimeString('ms-MY');
 }
+
+// ── Carian Anggota ───────────────────────────────────────────────
+
+function initCarian(){
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const sel = document.getElementById('carian_tahun');
+  if(sel && sel.options.length === 0){
+    for(let y = currentYear + 1; y >= currentYear - 3; y--){
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if(y === currentYear) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  document.getElementById('carian_bulan').value = now.getMonth() + 1;
+
+  const lockSection    = document.getElementById('caianLockSection');
+  const caianContentEl = document.getElementById('caianContent');
+  if(isFullAdmin() || caianUnlockedDistrict){
+    lockSection.style.display = 'none';
+    caianContentEl.style.display = 'block';
+    const districtNotice = document.getElementById('caianDistrictNotice');
+    if(districtNotice){
+      if(!isFullAdmin() && caianUnlockedDistrict){
+        const dName = { d1:'Melaka Tengah', d2:'Jasin', d3:'Alor Gajah', d4:'IPK SSPDRM' };
+        districtNotice.textContent = '🔓 Akses terhad: ' + (dName[caianUnlockedDistrict] || caianUnlockedDistrict);
+        districtNotice.style.display = 'block';
+      } else {
+        districtNotice.style.display = 'none';
+      }
+    }
+  } else {
+    lockSection.style.display = 'block';
+    caianContentEl.style.display = 'none';
+    document.getElementById('caianPasswordInput').value = '';
+    document.getElementById('caianLockError').style.display = 'none';
+  }
+
+  document.getElementById('carian_profile').style.display = 'none';
+  document.getElementById('carian_table_wrap').style.display = 'none';
+  document.getElementById('carian_empty').style.display = 'block';
+  document.getElementById('carian_empty_msg').textContent = 'Masukkan Nombor Badan untuk mencari rekod penugasan.';
+  document.getElementById('carian_jam_total').textContent = '—';
+}
+
+function unlockCarian(){
+  const input = document.getElementById('caianPasswordInput').value.trim();
+  const errEl = document.getElementById('caianLockError');
+  if(!input){ errEl.textContent = '⚠️ Sila masukkan kata laluan.'; errEl.style.display = 'block'; return; }
+
+  const CARIAN_MAP = { carian_d1:'d1', carian_d2:'d2', carian_d3:'d3', carian_d4:'d4' };
+  let matched = null;
+  for(const [key, district] of Object.entries(CARIAN_MAP)){
+    if(DISTRICT_PASSWORDS[key] && input === DISTRICT_PASSWORDS[key]){
+      matched = district;
+      break;
+    }
+  }
+
+  if(matched){
+    caianUnlockedDistrict = matched;
+    document.getElementById('caianLockSection').style.display = 'none';
+    document.getElementById('caianContent').style.display = 'block';
+    errEl.style.display = 'none';
+    const dName = { d1:'Melaka Tengah', d2:'Jasin', d3:'Alor Gajah', d4:'IPK SSPDRM' };
+    const notice = document.getElementById('caianDistrictNotice');
+    if(notice){
+      notice.textContent = '🔓 Akses terhad: ' + dName[matched];
+      notice.style.display = 'block';
+    }
+  } else {
+    errEl.textContent = '❌ Kata laluan salah. Sila cuba semula.';
+    errEl.style.display = 'block';
+    document.getElementById('caianPasswordInput').value = '';
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', async () => {
-  const savedUser = sessionStorage.getItem('dashUser');
+  const savedUser  = sessionStorage.getItem('dashUser');
   const savedToken = sessionStorage.getItem('dashToken');
-  if (savedUser && savedToken) {
-    currentUser = JSON.parse(savedUser);
+  if(savedUser && savedToken){
+    currentUser  = JSON.parse(savedUser);
     currentToken = savedToken;
+    const cachedPw = sessionStorage.getItem('districtPasswords');
+    if(cachedPw) DISTRICT_PASSWORDS = JSON.parse(cachedPw);
+    fetchDistrictPasswords();
     showDashboard();
   } else {
     document.getElementById('loginPage').style.display = 'flex';
@@ -1026,6 +1352,3 @@ window.addEventListener('DOMContentLoaded', async () => {
   setInterval(updateClock, 1000);
   updateClock();
 });
-</script>
-</body>
-</html>
