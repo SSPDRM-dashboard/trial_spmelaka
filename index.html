@@ -561,21 +561,35 @@ let currentUser = null;
 let currentToken = null;
 let currentDateData = [];
 let unlockedTabs = { d1: false, d2: false, d3: false, d4: false };
+let lastActivityPingSent = 0;
 
-// ── Idle Auto-Logout ─────────────────────────────────────────
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// ── Idle Auto-Logout (30 minutes) ────────────────────────────────
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 let idleTimer = null;
 let sessionPingInterval = null;
 
 function resetIdleTimer() {
+  if (!currentUser) return;
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(async () => {
-    if (!currentUser) return;
-    clearTimeout(idleTimer);
-    clearInterval(sessionPingInterval);
-    alert('⏰ Sesi anda telah tamat kerana tidak aktif selama 10 minit. Anda akan dilog keluar.');
-    await doLogout();
+  idleTimer = setTimeout(() => {
+    handleIdleLogout();
   }, IDLE_TIMEOUT_MS);
+
+  // Send activity ping to server — throttled to once per minute
+  const now = Date.now();
+  if (now - lastActivityPingSent > 60 * 1000) {
+    lastActivityPingSent = now;
+    fetch(`${APPS_SCRIPT_URL}?action=activityPing&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&t=${now}`)
+      .catch(() => {});
+  }
+}
+
+async function handleIdleLogout() {
+  if (!currentUser) return;
+  stopIdleDetection();
+  stopSessionPing();
+  alert('⏰ Sesi anda telah tamat kerana tidak aktif selama 30 minit. Anda akan dilog keluar.');
+  await doLogout();
 }
 
 function startIdleDetection() {
@@ -586,12 +600,12 @@ function startIdleDetection() {
 
 function stopIdleDetection() {
   clearTimeout(idleTimer);
+  idleTimer = null;
   const events = ['mousemove','mousedown','keypress','keydown','scroll','touchstart','click'];
   events.forEach(evt => document.removeEventListener(evt, resetIdleTimer));
 }
 
 function startSessionPing() {
-  // Ping server every 2 minutes to validate session
   sessionPingInterval = setInterval(async () => {
     if (!currentUser || !currentToken) return;
     try {
@@ -600,15 +614,12 @@ function startSessionPing() {
       const data = await res.json();
       if (!data.valid) {
         stopIdleDetection();
-        clearInterval(sessionPingInterval);
-        if (data.error === 'idle_timeout') {
-          alert('⏰ Sesi anda telah tamat kerana tidak aktif selama 10 minit. Anda akan dilog keluar.');
-        }
-        // Clear session storage and reset UI without calling doLogout
-        // (avoids double-saveLog call)
+        stopSessionPing();
+        alert('⏰ Sesi anda telah tamat. Anda akan dilog keluar.');
         sessionStorage.removeItem('dashUser');
         sessionStorage.removeItem('dashToken');
-        currentUser = null; currentToken = null;
+        currentUser = null;
+        currentToken = null;
         document.getElementById('loginPage').style.display = 'flex';
         document.getElementById('dashboardPage').style.display = 'none';
         document.getElementById('loginUser').value = '';
@@ -622,7 +633,14 @@ function startSessionPing() {
 
 function stopSessionPing() {
   clearInterval(sessionPingInterval);
+  sessionPingInterval = null;
 }
+
+// ── Shared table styles for tuntutan form ────────────────────────
+const S = {
+  th: 'border:1px solid #999;padding:5px 4px;text-align:center;font-size:10px;font-weight:700;',
+  td: 'border:1px solid #999;padding:4px;font-size:11px;height:22px;',
+};
 
 // ── Utility helpers ──────────────────────────────────────────────
 
@@ -680,6 +698,20 @@ function formatTime(val){
   const num=parseFloat(s);
   if(!isNaN(num)&&num>0&&num<1){ const t=Math.round(num*24*60); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }
   return s;
+}
+
+function getMonthName(m){
+  return ['','Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'][parseInt(m)];
+}
+
+function computeMasaTamat(masa, jam){
+  if(!masa || masa === '—' || !jam) return '—';
+  const match = masa.match(/^(\d{1,2}):(\d{2})$/);
+  if(!match) return '—';
+  const totalMins = parseInt(match[1])*60 + parseInt(match[2]) + Math.round(parseFloat(jam)*60);
+  const h = Math.floor(totalMins/60) % 24;
+  const m = totalMins % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 }
 
 function expandRows(rows){
@@ -777,7 +809,6 @@ document.addEventListener('DOMContentLoaded',function(){
   function handleEnter(e){ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } }
   loginUser.addEventListener('keypress',handleEnter);
   loginToken.addEventListener('keypress',handleEnter);
-
   let warmedOnFocus = false;
   loginUser.addEventListener('focus',()=>{
     if(!warmedOnFocus){
@@ -887,14 +918,14 @@ function showDashboard(){
     }
   }
 
-  startIdleDetection(); // ← start idle timer
-  startSessionPing();   // ← start server-side session ping
+  startIdleDetection();
+  startSessionPing();
   loadData();
 }
 
 async function doLogout(){
-  stopIdleDetection();  // ← stop idle timer
-  stopSessionPing();    // ← stop ping
+  stopIdleDetection();
+  stopSessionPing();
   await saveLog('logout');
   sessionStorage.removeItem('dashUser');
   sessionStorage.removeItem('dashToken');
@@ -1051,11 +1082,7 @@ function renderSemuaDaerahTab(data,dateStr){
     const byB = countBy(distData,'bertugas');
     const badge = document.getElementById(badgeId);
     if(badge) badge.textContent = distData.length + ' anggota';
-    makeChart(chartId,'bar',
-      Object.keys(byB).map(l=>l.replace('BALAI POLIS ','')),
-      Object.values(byB),
-      COLORS
-    );
+    makeChart(chartId,'bar',Object.keys(byB).map(l=>l.replace('BALAI POLIS ','')),Object.values(byB),COLORS);
   });
 
   const tbody=document.getElementById('today_table');
@@ -1136,8 +1163,7 @@ function renderPenugasanCard(cardId, data, dateStr, isAll){
   JENIS_ORDER.forEach(j=>{ totalPeg+=counts[j].peg; totalApr+=counts[j].apr; });
   if(!dateStr){ const now=new Date(); const days=['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu']; const months=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember']; dateStr=days[now.getDay()]+', '+now.getDate()+' '+months[now.getMonth()]+' '+now.getFullYear(); }
   const cardTitle=isAll?'JUMLAH PENUGASAN HARIAN':'PENUGASAN HARIAN';
-
-  const S={
+  const S2={
     hdr:  'padding:14px 16px 10px;background:linear-gradient(135deg,var(--navy-dark),var(--navy-mid));',
     ttl:  'font-family:Rajdhani,sans-serif;font-size:17px;font-weight:700;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;',
     sub:  'font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;',
@@ -1151,35 +1177,21 @@ function renderPenugasanCard(cardId, data, dateStr, isAll){
     totPEG:'padding:10px 0;width:10px;text-align:center;font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;background:#f4a261;color:#fff;',
     totAPR:'padding:10px 0;width:10px;text-align:center;font-family:Rajdhani,sans-serif;font-size:20px;font-weight:700;background:#4a90d9;color:#fff;',
   };
-
   let rows='';
   JENIS_ORDER.forEach(j=>{
-    rows+=`<tr>
-      <td style="${S.tdP}">${j}</td>
-      <td style="${S.tdN}">${counts[j].peg}</td>
-      <td style="${S.tdN}">${counts[j].apr}</td>
-    </tr>`;
+    rows+=`<tr><td style="${S2.tdP}">${j}</td><td style="${S2.tdN}">${counts[j].peg}</td><td style="${S2.tdN}">${counts[j].apr}</td></tr>`;
   });
-
   card.innerHTML=`
-    <div style="${S.hdr}">
-      <div style="${S.ttl}">📋 ${cardTitle}</div>
-      <div style="${S.sub}">${dateStr}</div>
-    </div>
-    <table style="${S.tbl}">
+    <div style="${S2.hdr}"><div style="${S2.ttl}">📋 ${cardTitle}</div><div style="${S2.sub}">${dateStr}</div></div>
+    <table style="${S2.tbl}">
       <colgroup><col style="width:auto"><col style="width:10px"><col style="width:10px"></colgroup>
       <thead><tr>
-        <th style="${S.thP}">PENUGASAN</th>
-        <th style="${S.thPEG}">PEG</th>
-        <th style="${S.thAPR}">APR</th>
+        <th style="${S2.thP}">PENUGASAN</th>
+        <th style="${S2.thPEG}">PEG</th>
+        <th style="${S2.thAPR}">APR</th>
       </tr></thead>
-      <tbody>
-        ${rows}
-        <tr>
-          <td style="${S.totP}">JUMLAH KESELURUHAN</td>
-          <td style="${S.totPEG}">${totalPeg}</td>
-          <td style="${S.totAPR}">${totalApr}</td>
-        </tr>
+      <tbody>${rows}
+        <tr><td style="${S2.totP}">JUMLAH KESELURUHAN</td><td style="${S2.totPEG}">${totalPeg}</td><td style="${S2.totAPR}">${totalApr}</td></tr>
       </tbody>
     </table>`;
 }
@@ -1197,17 +1209,9 @@ function renderSummaryTable(containerId,data){
   const byBalai={};
   rows.forEach(r=>{ if(!byBalai[r.balai]) byBalai[r.balai]=[]; byBalai[r.balai].push(r); });
   let html=`<div id="summary_${containerId}" class="table-wrap" style="margin-bottom:18px;">
-    <div class="card-header" style="padding:16px 20px 0;">
-      <div class="card-title">📊 Ringkasan Penugasan Mengikut Balai &amp; Jenis Tugas</div>
-      <div class="card-badge">${data.length} anggota</div>
-    </div>
-    <div style="overflow-x:auto;margin-top:12px;">
-    <table>
-      <thead><tr>
-        <th>BALAI</th>
-        <th>TUGAS</th>
-        <th style="text-align:center;min-width:100px;">BILANGAN</th>
-      </tr></thead>
+    <div class="card-header" style="padding:16px 20px 0;"><div class="card-title">📊 Ringkasan Penugasan Mengikut Balai &amp; Jenis Tugas</div><div class="card-badge">${data.length} anggota</div></div>
+    <div style="overflow-x:auto;margin-top:12px;"><table>
+      <thead><tr><th>BALAI</th><th>TUGAS</th><th style="text-align:center;min-width:100px;">BILANGAN</th></tr></thead>
       <tbody>`;
   let grand=0;
   Object.keys(byBalai).sort().forEach(balai=>{
@@ -1221,15 +1225,9 @@ function renderSummaryTable(containerId,data){
         <td style="text-align:center;font-weight:600;">${e.count}</td>
       </tr>`;
     });
-    html+=`<tr style="background:#f1f5f9;">
-      <td colspan="2" style="color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Jumlah — ${balai.replace('BALAI POLIS ','BP ')}</td>
-      <td style="text-align:center;color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;">${tot}</td>
-    </tr>`;
+    html+=`<tr style="background:#f1f5f9;"><td colspan="2" style="color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Jumlah — ${balai.replace('BALAI POLIS ','BP ')}</td><td style="text-align:center;color:var(--navy);font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;">${tot}</td></tr>`;
   });
-  html+=`<tr style="background:var(--navy);">
-    <td colspan="2" style="font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--gold);">JUMLAH KESELURUHAN</td>
-    <td style="text-align:center;font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--gold);">${grand}</td>
-  </tr>`;
+  html+=`<tr style="background:var(--navy);"><td colspan="2" style="font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;letter-spacing:.06em;color:var(--gold);">JUMLAH KESELURUHAN</td><td style="text-align:center;font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--gold);">${grand}</td></tr>`;
   html+=`</tbody></table></div></div>`;
   const container=document.getElementById(containerId); if(container) container.insertAdjacentHTML('afterend',html);
 }
@@ -1265,8 +1263,7 @@ function initCarian(){
   if(sel && sel.options.length === 0){
     for(let y = currentYear + 1; y >= currentYear - 3; y--){
       const opt = document.createElement('option');
-      opt.value = y;
-      opt.textContent = y;
+      opt.value = y; opt.textContent = y;
       if(y === currentYear) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -1310,10 +1307,7 @@ function unlockCarian(){
   const CARIAN_MAP = { carian_d1:'d1', carian_d2:'d2', carian_d3:'d3', carian_d4:'d4' };
   let matched = null;
   for(const [key, district] of Object.entries(CARIAN_MAP)){
-    if(DISTRICT_PASSWORDS[key] && input === DISTRICT_PASSWORDS[key]){
-      matched = district;
-      break;
-    }
+    if(DISTRICT_PASSWORDS[key] && input === DISTRICT_PASSWORDS[key]){ matched = district; break; }
   }
 
   if(matched){
@@ -1323,15 +1317,338 @@ function unlockCarian(){
     errEl.style.display = 'none';
     const dName = { d1:'Melaka Tengah', d2:'Jasin', d3:'Alor Gajah', d4:'IPK SSPDRM' };
     const notice = document.getElementById('caianDistrictNotice');
-    if(notice){
-      notice.textContent = '🔓 Akses terhad: ' + dName[matched];
-      notice.style.display = 'block';
-    }
+    if(notice){ notice.textContent = '🔓 Akses terhad: ' + dName[matched]; notice.style.display = 'block'; }
   } else {
     errEl.textContent = '❌ Kata laluan salah. Sila cuba semula.';
     errEl.style.display = 'block';
     document.getElementById('caianPasswordInput').value = '';
   }
+}
+
+async function doCarianSearch(){
+  if(!currentUser || (!isFullAdmin() && !isDashAdmin() && !caianUnlockedDistrict)) return;
+
+  const noBadan = document.getElementById('carian_nobadan').value.trim();
+  const bulan   = parseInt(document.getElementById('carian_bulan').value);
+  const tahun   = parseInt(document.getElementById('carian_tahun').value);
+
+  if(!noBadan){
+    document.getElementById('carian_empty_msg').textContent = '⚠️ Sila masukkan Nombor Badan.';
+    document.getElementById('carian_empty').style.display = 'block';
+    document.getElementById('carian_profile').style.display = 'none';
+    document.getElementById('carian_table_wrap').style.display = 'none';
+    return;
+  }
+
+  const btn = document.getElementById('carian_btn');
+  btn.innerHTML = '<span class="spinner"></span> Mencari...';
+  btn.disabled = true;
+
+  document.getElementById('carian_profile').style.display = 'none';
+  document.getElementById('carian_table_wrap').style.display = 'none';
+  document.getElementById('carian_empty').style.display = 'none';
+
+  let rows = [];
+
+  try {
+    const url = `${APPS_SCRIPT_URL}?action=getData&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&bulan=${bulan}&tahun=${tahun}`;
+    const res  = await fetch(url);
+    const json = await res.json();
+
+    if(json.error){
+      const expanded = allData.length ? allData : [];
+      rows = expanded.filter(r => {
+        const namaStr = String(r.nama || '').toUpperCase();
+        if(!namaStr.includes(noBadan.toUpperCase())) return false;
+        const tarikh = normaliseDate(r.tarikh || '');
+        if(!tarikh) return false;
+        const p = tarikh.split('/');
+        if(parseInt(p[1]) !== bulan || parseInt(p[2]) !== tahun) return false;
+        if(!isFullAdmin() && caianUnlockedDistrict){
+          if(normDaerah(r.daerah) !== DAERAH_MAP[caianUnlockedDistrict]) return false;
+        }
+        return true;
+      });
+    } else if(json.rows && json.rows.length > 0){
+      const expanded = expandRows(json.rows);
+      rows = expanded.filter(r => {
+        const namaStr = String(r.nama || '').toUpperCase();
+        if(!namaStr.includes(noBadan.toUpperCase())) return false;
+        const tarikh = normaliseDate(r.tarikh || '');
+        if(!tarikh) return false;
+        const p = tarikh.split('/');
+        if(parseInt(p[1]) !== bulan || parseInt(p[2]) !== tahun) return false;
+        if(!isFullAdmin() && caianUnlockedDistrict){
+          if(normDaerah(r.daerah) !== DAERAH_MAP[caianUnlockedDistrict]) return false;
+        }
+        return true;
+      });
+    }
+  } catch(e){
+    document.getElementById('carian_empty_msg').textContent = '❌ Ralat rangkaian. Sila cuba semula.';
+    document.getElementById('carian_empty').style.display = 'block';
+    btn.innerHTML = '🔍 SEMAK';
+    btn.disabled = false;
+    return;
+  }
+
+  if(rows.length === 0){
+    document.getElementById('carian_empty_msg').textContent = `❌ Tiada rekod ditemui untuk Nombor Badan "${noBadan}" bagi ${getMonthName(bulan)} ${tahun}.`;
+    document.getElementById('carian_empty').style.display = 'block';
+    document.getElementById('carian_jam_total').textContent = '—';
+  } else {
+    // Fetch IC + bank from member profile spreadsheet
+    let memberProfile = {};
+    try {
+      const profileUrl = `${APPS_SCRIPT_URL}?action=getMemberProfile&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&nobadan=${encodeURIComponent(noBadan)}`;
+      const profileRes  = await fetch(profileUrl);
+      const profileData = await profileRes.json();
+      if(profileData.found){
+        memberProfile = {
+          ic   : profileData.ic   || '—',
+          bank : profileData.bank || '—',
+          nama : profileData.nama || '',
+        };
+      }
+    } catch(e){
+      console.warn('Could not fetch member profile:', e);
+    }
+    renderCarianResult(rows, noBadan, bulan, tahun, memberProfile);
+  }
+
+  btn.innerHTML = '🔍 SEMAK';
+  btn.disabled = false;
+}
+
+function renderCarianResult(rows, noBadan, bulan, tahun, profile){
+  profile = profile || {};
+
+  const rawNama = rows.map(r=>r.nama).find(v=>v) || '—';
+  const cleanNama = rawNama
+    .replace(new RegExp('\\b' + noBadan.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b','gi'), '')
+    .replace(/[-–()\s]+$/, '').replace(/^[-–()\s]+/, '').trim() || rawNama;
+
+  const nama    = profile.nama    || cleanNama;
+  const pangkat = profile.pangkat || rows.map(r=>r.pangkat).find(v=>v) || '—';
+  const daerah  = profile.daerah  || rows.map(r=>r.daerah).find(v=>v)  || '—';
+  const balai   = profile.balai   || rows.map(r=>r.balai).find(v=>v)   || '—';
+  const ic      = profile.ic   || '—';
+  const bank    = profile.bank || '—';
+
+  // ── Elaun rate based on pangkat ──────────────────────────────────
+  const pangkatUpper = pangkat.toUpperCase().trim();
+  const isPegawai    = ['INSP/SP','ASP/SP','DSP/SP','SUPT/SP'].some(p => pangkatUpper.includes(p));
+  const KADAR_ELAUN  = isPegawai ? 9.80 : 8.00;
+  const KADAR_LABEL  = isPegawai ? 'PEGAWAI (RM 9.80/jam)' : 'APR (RM 8.00/jam)';
+
+  // Build day map
+  const daysInMonth = new Date(tahun, bulan, 0).getDate();
+  const dayMap = {};
+  for(let d = 1; d <= daysInMonth; d++) dayMap[d] = [];
+
+  rows.forEach(r => {
+    const tarikh = normaliseDate(String(r.tarikh||''));
+    if(!tarikh) return;
+    const parts = tarikh.split('/');
+    if(parts.length !== 3) return;
+    const day = parseInt(parts[0]);
+    if(day && day >= 1 && day <= daysInMonth) dayMap[day].push(r);
+  });
+
+  // ── Jam & elaun totals ───────────────────────────────────────────
+  const activeDays    = Object.values(dayMap).filter(v=>v.length>0).length;
+  const totalJam      = rows.reduce((s,r)=>s+(parseFloat(r.jam)||0), 0);
+  const MAX_JAM       = 48;
+  const jamDituntut   = Math.min(totalJam, MAX_JAM);
+  const elaunPenugasan = totalJam * KADAR_ELAUN;
+  const elaunDituntut  = jamDituntut * KADAR_ELAUN;
+
+  // Update header KPI
+  document.getElementById('carian_jam_total').textContent = totalJam + ' JAM';
+
+  // Profile card
+  document.getElementById('p_nobadan').textContent    = noBadan;
+  document.getElementById('p_nama').textContent       = nama;
+  document.getElementById('p_pangkat').textContent    = pangkat;
+  document.getElementById('p_daerah').textContent     = daerah.replace('BALAI POLIS ','');
+  document.getElementById('p_balai').textContent      = balai.replace('BALAI POLIS ','');
+  document.getElementById('p_kekerapan').textContent  = activeDays + ' KALI';
+  document.getElementById('p_jumlah_jam').textContent = totalJam + ' JAM';
+  document.getElementById('carian_profile').style.display = 'block';
+  document.getElementById('carian_period').textContent = `${getMonthName(bulan)} ${tahun}`;
+
+  // Collect duty entries sorted by day
+  const entries = [];
+  for(let d = 1; d <= daysInMonth; d++){
+    if(!dayMap[d] || !dayMap[d].length) continue;
+    dayMap[d].forEach(r => {
+      entries.push({
+        tarikh : d + '/' + bulan + '/' + tahun,
+        mula   : r.masa || '—',
+        tamat  : r.masaTamat || computeMasaTamat(r.masa, r.jam),
+        jenis  : r.jenis || '—',
+        jam    : parseFloat(r.jam) || 0,
+      });
+    });
+  }
+
+  // Build table rows — minimum 20 for printing
+  const MIN_ROWS = 20;
+  let rowsHtml = '';
+  entries.forEach((e, i) => {
+    const elaun = (e.jam * KADAR_ELAUN).toFixed(2);
+    rowsHtml += `<tr>
+      <td style="${S.td} text-align:center;">${i+1}</td>
+      <td style="${S.td} text-align:center;">${e.tarikh}</td>
+      <td style="${S.td} text-align:center;">${e.mula}</td>
+      <td style="${S.td} text-align:center;">${e.tamat}</td>
+      <td style="${S.td}">${e.jenis}</td>
+      <td style="${S.td} text-align:center;"></td>
+      <td style="${S.td} text-align:center;"></td>
+      <td style="${S.td} text-align:center; font-weight:700;">${e.jam}</td>
+      <td style="${S.td} text-align:center;">RM</td>
+      <td style="${S.td} text-align:right; padding-right:8px;">${KADAR_ELAUN.toFixed(2)}</td>
+      <td style="${S.td} text-align:right; padding-right:8px; font-weight:700;">${elaun}</td>
+    </tr>`;
+  });
+
+  for(let i = entries.length; i < MIN_ROWS; i++){
+    rowsHtml += `<tr>
+      <td style="${S.td} text-align:center;">${i+1}</td>
+      <td style="${S.td}"></td><td style="${S.td}"></td><td style="${S.td}"></td>
+      <td style="${S.td}"></td><td style="${S.td}"></td><td style="${S.td}"></td>
+      <td style="${S.td}"></td><td style="${S.td}"></td><td style="${S.td}"></td>
+      <td style="${S.td}"></td>
+    </tr>`;
+  }
+
+  const formHtml = `
+  <div id="tuntutan_form" style="font-family:'Times New Roman',Times,serif;font-size:12px;background:#fff;padding:24px 32px;border:1px solid #ccc;border-radius:4px;max-width:900px;margin:0 auto;">
+
+    <div style="text-align:right;font-size:10px;margin-bottom:2px;">Lampiran "A"</div>
+    <div style="text-align:right;font-size:10px;margin-bottom:12px;">BORANG JWKKK/010/12</div>
+
+    <div style="text-align:center;font-weight:700;font-size:13px;margin-bottom:4px;">SUKARELAWAN SIMPANAN POLIS DIRAJA MALAYSIA (SSPDRM)</div>
+    <div style="text-align:center;font-size:12px;margin-bottom:4px;">KONTINJEN : MELAKA</div>
+    <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:16px;">
+      TUNTUTAN ELAUN PENUGASAN / LATIHAN BAGI BULAN :&nbsp;&nbsp;
+      <span style="text-decoration:underline;">${getMonthName(bulan).toUpperCase()}</span>
+      &nbsp;&nbsp;
+      <span style="text-decoration:underline;">${tahun}</span>
+    </div>
+
+    <!-- Member info -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:11px;">
+      <tr>
+        <td style="width:130px;padding:3px 4px;"><strong>PANGKAT / NO :</strong></td>
+        <td style="padding:3px 4px;">${pangkat}&nbsp;&nbsp;&nbsp;${noBadan}</td>
+        <td style="width:180px;padding:3px 4px;"><strong>NO. KAD PENGENALAN</strong></td>
+        <td style="padding:3px 4px;">:&nbsp; <strong>${ic}</strong></td>
+      </tr>
+      <tr>
+        <td style="padding:3px 4px;"><strong>NAMA</strong></td>
+        <td style="padding:3px 4px;"><strong>${nama}</strong></td>
+        <td style="padding:3px 4px;"><strong>NAMA DAN NO. AKAUN BANK</strong></td>
+        <td style="padding:3px 4px;">:&nbsp; <strong>${bank}</strong></td>
+      </tr>
+      <tr>
+        <td style="padding:3px 4px;"><strong>DAERAH</strong></td>
+        <td style="padding:3px 4px;">${daerah.replace('BALAI POLIS ','')}</td>
+        <td></td><td></td>
+      </tr>
+    </table>
+
+    <div style="border-top:1px solid #000;margin-bottom:8px;"></div>
+
+    <!-- Main duty table -->
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="background:#f0f0f0;">
+          <th style="${S.th} width:28px;">BIL</th>
+          <th style="${S.th} width:75px;">TARIKH</th>
+          <th colspan="2" style="${S.th}">MASA</th>
+          <th style="${S.th}">JENIS TUGAS</th>
+          <th style="${S.th} width:58px;">SD MASUK</th>
+          <th style="${S.th} width:58px;">SD KELUAR</th>
+          <th style="${S.th} width:48px;">JUMLAH JAM BERTUGAS</th>
+          <th colspan="2" style="${S.th} width:85px;">KADAR ELAUN SEJAM<br><span style="font-weight:400;font-size:9px;">${KADAR_LABEL}</span></th>
+          <th style="${S.th} width:68px;">ELAUN PENUGASAN</th>
+        </tr>
+        <tr style="background:#f0f0f0;">
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th} width:52px;">MULA</th>
+          <th style="${S.th} width:52px;">TAMAT</th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+          <th style="${S.th}"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <!-- Jumlah Penugasan row -->
+        <tr style="background:#f8f8f8;">
+          <td colspan="7" style="${S.td} text-align:right; font-weight:700; padding-right:8px;">JUMLAH JAM PENUGASAN</td>
+          <td style="${S.td} text-align:center; font-weight:700;">${totalJam}</td>
+          <td colspan="2" style="${S.td} text-align:right; font-weight:700; padding-right:8px;">JUMLAH ELAUN RM</td>
+          <td style="${S.td} text-align:right; font-weight:700; padding-right:8px;">${elaunPenugasan.toFixed(2)}</td>
+        </tr>
+        <!-- Jumlah Dituntut row — capped at 48 -->
+        <tr style="background:#fff3cd;">
+          <td colspan="7" style="${S.td} text-align:right; font-weight:700; padding-right:8px;">
+            JUMLAH JAM DITUNTUT
+            ${totalJam > MAX_JAM ? `<span style="color:#dc2626;font-size:10px;margin-left:8px;">(Had maksimum 48 jam)</span>` : ''}
+          </td>
+          <td style="${S.td} text-align:center; font-weight:700; ${totalJam > MAX_JAM ? 'color:#dc2626;' : ''}">${jamDituntut}</td>
+          <td colspan="2" style="${S.td} text-align:right; font-weight:700; padding-right:8px;">JUMLAH ELAUN DITUNTUT RM</td>
+          <td style="${S.td} text-align:right; font-weight:700; padding-right:8px; ${totalJam > MAX_JAM ? 'color:#dc2626;' : ''}">${elaunDituntut.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Declaration -->
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:10px;">
+      <div>Saya menakui menjalankan penugasan/latihan pada bulan tersebut adalah benar</div>
+      <div>Saya telah menyemak pemeriksaan dan dapat tuntutan jam penugasan / latihan tersebut adalah <strong>BENAR</strong></div>
+      <div>Saya mengesahkan tuntutan penugasan/latihan tersebut adalah <strong>BENAR</strong></div>
+    </div>
+    <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:10px;">
+      <div>
+        <div>Tandatangan yang menuntut</div>
+        <div style="margin-top:32px;border-top:1px solid #000;width:80%;"></div>
+        <div style="margin-top:8px;">Tarikh : _______________</div>
+      </div>
+      <div>
+        <div style="margin-top:32px;border-top:1px solid #000;width:80%;"></div>
+        <div style="margin-top:4px;">Nama : _______________</div>
+        <div style="margin-top:4px;">Jawatan : _______________</div>
+        <div style="margin-top:4px;">Tarikh : _______________</div>
+      </div>
+      <div>
+        <div style="margin-top:32px;border-top:1px solid #000;width:80%;"></div>
+        <div style="margin-top:4px;">Nama : _______________</div>
+        <div style="margin-top:4px;">Jawatan : _______________</div>
+        <div style="margin-top:4px;">Tarikh : _______________</div>
+      </div>
+    </div>
+
+    <!-- Print button (hidden on print) -->
+    <div style="text-align:center;margin-top:24px;" class="no-print">
+      <button onclick="window.print()"
+        style="background:#003087;color:white;border:none;border-radius:8px;padding:10px 32px;font-size:14px;font-family:Inter,sans-serif;font-weight:700;cursor:pointer;">
+        🖨️ Cetak / Print
+      </button>
+    </div>
+
+  </div>`;
+
+  document.getElementById('carian_table_wrap').innerHTML = formHtml;
+  document.getElementById('carian_table_wrap').style.display = 'block';
+  document.getElementById('carian_empty').style.display = 'none';
 }
 
 // ── Boot ─────────────────────────────────────────────────────────
@@ -1352,3 +1669,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   setInterval(updateClock, 1000);
   updateClock();
 });
+  @media print {
+  header, .tabs, .date-banner, .kpi-row,
+  .grid-wide, .carian-controls, #carian_profile,
+  footer, .no-print, .date-picker-area,
+  .alert, .btn-logout { display: none !important; }
+  #tuntutan_form { border:none !important; padding:0 !important; max-width:100% !important; }
+  body { background: white !important; }
+}
