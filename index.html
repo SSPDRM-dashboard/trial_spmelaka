@@ -876,18 +876,36 @@ async function fetchDistrictPasswords(){
     if(cached) DISTRICT_PASSWORDS = JSON.parse(cached);
   }
 }
-
 async function saveLog(action){
-  if(!currentUser||!currentToken) return;
-  const now=new Date();
-  const _pad = n => String(n).padStart(2,'0');
-  const _dateStr = _pad(now.getDate())+'/'+_pad(now.getMonth()+1)+'/'+now.getFullYear();
-  const _timeStr = _pad(now.getHours())+':'+_pad(now.getMinutes())+':'+_pad(now.getSeconds());
-  const logData={action,username:currentUser.username,role:currentUser.role,tab:currentUser.role==='admin'?'Semua Tab':(TAB_LABELS[currentUser.district]||''),loginDate:_dateStr,loginTime:_timeStr};
-  if(action==='logout') logData.logoutTime=_timeStr;
-  const url=`${APPS_SCRIPT_URL}?action=saveLog&username=${encodeURIComponent(currentUser.username)}&token=${encodeURIComponent(currentToken)}&data=${encodeURIComponent(JSON.stringify(logData))}`;
-  try{ await fetch(url); }catch(e){}
+  if(!currentUser || !currentToken) return;
+  try {
+    // Force Malaysia time UTC+8
+    const now = new Date();
+    const my  = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000));
+    const _p  = n => String(n).padStart(2,'0');
+    const dateStr = _p(my.getDate()) + '/' + _p(my.getMonth()+1) + '/' + my.getFullYear();
+    const timeStr = _p(my.getHours()) + ':' + _p(my.getMinutes()) + ':' + _p(my.getSeconds());
+
+    const logData = {
+      action,
+      username:  currentUser.username,
+      role:      currentUser.role,
+      tab:       currentUser.role === 'admin' ? 'Semua Tab' : (TAB_LABELS[currentUser.district] || ''),
+      loginDate: dateStr,
+      loginTime: timeStr
+    };
+    if(action === 'logout') logData.logoutTime = timeStr;
+
+    const url = `${APPS_SCRIPT_URL}?action=saveLog`
+      + `&username=${encodeURIComponent(currentUser.username)}`
+      + `&token=${encodeURIComponent(currentToken)}`
+      + `&data=${encodeURIComponent(JSON.stringify(logData))}`;
+    await fetch(url);
+  } catch(e) {
+    console.warn('saveLog error:', e);
+  }
 }
+
 
 function showDashboard(){
   document.getElementById('loginPage').style.display='none';
@@ -1653,27 +1671,25 @@ function renderCarianResult(rows, noBadan, bulan, tahun, profile){
 
 // ── Boot ─────────────────────────────────────────────────────────
 
-window.addEventListener('DOMContentLoaded', async () => {
-  const savedUser  = sessionStorage.getItem('dashUser');
-  const savedToken = sessionStorage.getItem('dashToken');
-  if(savedUser && savedToken){
-    currentUser  = JSON.parse(savedUser);
-    currentToken = savedToken;
-    const cachedPw = sessionStorage.getItem('districtPasswords');
-    if(cachedPw) DISTRICT_PASSWORDS = JSON.parse(cachedPw);
-    fetchDistrictPasswords();
-    showDashboard();
-  } else {
-    document.getElementById('loginPage').style.display = 'flex';
-  }
-  setInterval(updateClock, 1000);
-  updateClock();
+window.addEventListener('beforeunload', function(){
+  if(!currentUser || !currentToken) return;
+  try {
+    const now = new Date();
+    const my  = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000));
+    const _p  = n => String(n).padStart(2,'0');
+    const timeStr = _p(my.getHours()) + ':' + _p(my.getMinutes()) + ':' + _p(my.getSeconds());
+
+    const logData = JSON.stringify({
+      action:     'logout',
+      username:   currentUser.username,
+      role:       currentUser.role,
+      tab:        '',
+      logoutTime: timeStr
+    });
+    const url = `${APPS_SCRIPT_URL}?action=saveLog`
+      + `&username=${encodeURIComponent(currentUser.username)}`
+      + `&token=${encodeURIComponent(currentToken)}`
+      + `&data=${encodeURIComponent(logData)}`;
+    fetch(url, { keepalive: true }).catch(() => {});
+  } catch(e) {}
 });
-  @media print {
-  header, .tabs, .date-banner, .kpi-row,
-  .grid-wide, .carian-controls, #carian_profile,
-  footer, .no-print, .date-picker-area,
-  .alert, .btn-logout { display: none !important; }
-  #tuntutan_form { border:none !important; padding:0 !important; max-width:100% !important; }
-  body { background: white !important; }
-}
